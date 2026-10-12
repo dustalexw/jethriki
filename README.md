@@ -1,9 +1,6 @@
 <p align="center">
-  <img src="Assets/AppIcon.png" alt="Jethriki app icon" width="128">
+  <img src="Assets/readme-header-jethriki.png" alt="Jethriki — Every yt-dlp and FFmpeg feature, in a native desktop app." width="100%">
 </p>
-
-<h1 align="center">Jethriki</h1>
-<p align="center">Every yt-dlp and FFmpeg feature, in a native desktop app.</p>
 
 <p align="center">
   <a href="https://github.com/dustalexw/sipass/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/dustalexw/sipass?style=for-the-badge&color=7e6eff&labelColor=1a1033"></a>
