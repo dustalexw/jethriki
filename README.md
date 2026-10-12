@@ -14,9 +14,9 @@
 <p align="center">
   <a href="https://github.com/dustalexw/sipass/releases/latest"><b>Download for macOS</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dustalexw/sipass/releases/latest"><b>Download for Windows</b></a>
+  <a href="https://github.com/dustalexw/sipass/releases/download/v2.4.1/Sipass-2.4.1-Windows-x64.zip"><b>Download for Windows</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dustalexw/sipass/releases/latest"><b>Download for Linux</b></a>
+  <a href="https://github.com/dustalexw/sipass/releases/download/v2.4.1/Sipass-2.4.1-Linux-x64.tar.gz"><b>Download for Linux</b></a>
 </p>
 
 A native desktop front end for **yt-dlp** and **FFmpeg**, with SwiftUI on macOS,
@@ -32,6 +32,11 @@ icon sizes and `Windows/App/AppIcon.ico` the Windows ones.
 Jethriki was previously called Sipass and YT-DLP Studio; settings and presets from earlier
 versions carry over.
 
+The latest macOS release is **Jethriki 2.4.2**. Windows and Linux remain on the
+**Sipass 2.4.1** release; the links above download those existing packages.
+
+On macOS, unzip **Jethriki-2.4.2-macOS.zip** and move **Jethriki.app** to Applications.
+
 The interface takes its look from the icon on all three platforms: a deep-space
 backdrop, frosted panels with an iridescent edge, a compact link field and a glowing
 Download button. Choose **System**, **Light** or **Dark** under Settings → Appearance.
@@ -39,13 +44,13 @@ Download button. Choose **System**, **Light** or **Dark** under Settings → App
 ## Windows portable edition
 
 The Windows x64 edition includes the .NET desktop runtime, yt-dlp, FFmpeg, ffprobe
-and Deno. Extract the entire ZIP and open `Jethriki.exe`; no dependencies need
+and Deno. The current released package is Sipass 2.4.1: extract the entire ZIP and open `Sipass.exe`; no dependencies need
 to be installed separately. See [Windows instructions and build details](Windows/README.md).
 
 ## Linux portable edition
 
 The Linux x64 edition bundles the .NET runtime, yt-dlp, FFmpeg, ffprobe and Deno.
-Extract the `.tar.gz`, run `./Jethriki`, and optionally `./install.sh` to add it to
+The current released package is Sipass 2.4.1. Extract the `.tar.gz`, run `./Sipass`, and optionally `./install.sh` to add it to
 your applications menu. See [Linux instructions and build details](Linux/README.md).
 
 ## macOS requirements

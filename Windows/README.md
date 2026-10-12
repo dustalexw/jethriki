@@ -1,5 +1,8 @@
 # Jethriki for Windows
 
+The currently published Windows package remains **Sipass 2.4.1**, with `Sipass.exe`
+inside the `Sipass` folder. The Jethriki names below apply to builds from this source.
+
 A native Windows desktop port of Jethriki. The portable x64 ZIP includes the .NET desktop runtime, yt-dlp (with its Python/EJS dependencies), FFmpeg, ffprobe, and Deno. No Python, .NET, FFmpeg installation or PATH configuration is needed.
 
 ## Run

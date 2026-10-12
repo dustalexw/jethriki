@@ -11,7 +11,7 @@ EXEC="Jethriki"
 # Kept from the app's former name so existing preferences carry over.
 BUNDLE_ID="com.local.ytdlpstudio"
 # CI passes VERSION from .github/workflows/build.yml.
-VERSION="${VERSION:-2.4.1}"
+VERSION="${VERSION:-2.4.2}"
 
 ARCH_FLAGS=()
 if [[ "${1:-}" == "universal" ]]; then
