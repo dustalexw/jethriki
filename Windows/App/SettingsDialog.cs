@@ -22,7 +22,7 @@ public sealed class SettingsDialog : Form {
         layout.Controls.Add(Heading("About"));
         var about = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, Margin = new Padding(0, 0, 0, 12), Padding = new Padding(14, 10, 14, 10) };
         var titleRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 0, 0, 4) };
-        titleRow.Controls.Add(new Label { Text = "Sipass", AutoSize = true, Font = new Font("Segoe UI Semibold", 20f), Margin = new Padding(0, 0, 10, 0) });
+        titleRow.Controls.Add(new Label { Text = "Jethriki", AutoSize = true, Font = new Font("Segoe UI Semibold", 20f), Margin = new Padding(0, 0, 10, 0) });
         titleRow.Controls.Add(new Label { Text = "v" + version, AutoSize = true, Tag = "secondary", Margin = new Padding(0, 14, 0, 0) });
         about.Controls.Add(titleRow);
         about.Controls.Add(new Label { Text = "Every yt-dlp and FFmpeg feature, in a native desktop app for macOS, Windows and Linux.", AutoSize = true, MaximumSize = new Size(500, 0), Margin = new Padding(0, 0, 0, 6) });

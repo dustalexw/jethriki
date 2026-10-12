@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Builds "Sipass.app" into ./build
+# Builds "Jethriki.app" into ./build
 #   ./build.sh            native arch, release
 #   ./build.sh universal  arm64 + x86_64 (requires full Xcode)
 #   ./build.sh install    build, then copy to /Applications
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP_NAME="Sipass"
-EXEC="Sipass"
+APP_NAME="Jethriki"
+EXEC="Jethriki"
 # Kept from the app's former name so existing preferences carry over.
 BUNDLE_ID="com.local.ytdlpstudio"
 # CI passes VERSION from .github/workflows/build.yml.
-VERSION="${VERSION:-2.4.1}"
+VERSION="${VERSION:-2.4.2}"
 
 ARCH_FLAGS=()
 if [[ "${1:-}" == "universal" ]]; then

@@ -1,10 +1,13 @@
-# Sipass for Windows
+# Jethriki for Windows
 
-A native Windows desktop port of Sipass. The portable x64 ZIP includes the .NET desktop runtime, yt-dlp (with its Python/EJS dependencies), FFmpeg, ffprobe, and Deno. No Python, .NET, FFmpeg installation or PATH configuration is needed.
+The currently published Windows package remains **Sipass 2.4.1**, with `Sipass.exe`
+inside the `Sipass` folder. The Jethriki names below apply to builds from this source.
+
+A native Windows desktop port of Jethriki. The portable x64 ZIP includes the .NET desktop runtime, yt-dlp (with its Python/EJS dependencies), FFmpeg, ffprobe, and Deno. No Python, .NET, FFmpeg installation or PATH configuration is needed.
 
 ## Run
 
-On Windows 10 22H2 or Windows 11, extract **the entire ZIP** to a folder and open **Sipass.exe**. Keep the `tools` folder and the app's DLLs beside the EXE. No administrator privileges are required. Downloads go to your Downloads folder by default; settings and custom presets go to `%LOCALAPPDATA%\YTDLPStudio`.
+On Windows 10 22H2 or Windows 11, extract **the entire ZIP** to a folder and open **Jethriki.exe**. Keep the `tools` folder and the app's DLLs beside the EXE. No administrator privileges are required. Downloads go to your Downloads folder by default; settings and custom presets go to `%LOCALAPPDATA%\YTDLPStudio`.
 
 Paste links into the link field (Enter adds them to the queue, Shift+Enter starts a new line), choose a preset or adjust the options in the left sidebar, and click **Download**. Choose **System**, **Light** or **Dark** in **Settings** (gear button or Ctrl+,); switching rebuilds the window without interrupting downloads. The queue supports parallel jobs, progress, cancellation, retry, logs and Show files. **Analyze formats** lets you select a combined format or one video plus one audio stream. **Find comment chapters** searches the first video's top 200 comments and previews timestamp lists; choosing one switches the source to Comments. You can choose Comments if chapters are missing in Chapters & SponsorBlock.
 
@@ -24,7 +27,7 @@ dotnet run --project Windows/Tests/YtdlpStudio.Tests.csproj -c Release
 To run the integration tests against the packaged tools:
 
 ```powershell
-$env:YTDLP_TEST_TOOLS = (Resolve-Path 'Windows/dist/Sipass/tools').Path
+$env:YTDLP_TEST_TOOLS = (Resolve-Path 'Windows/dist/Jethriki/tools').Path
 dotnet run --project Windows/Tests/YtdlpStudio.Tests.csproj -c Release
 ```
 

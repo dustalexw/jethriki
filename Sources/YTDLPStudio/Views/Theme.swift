@@ -204,7 +204,7 @@ struct GlowButtonStyle: ButtonStyle {
     }
 }
 
-/// Brand mark: the app icon (when bundled) and "Sipass" in ribbon colours.
+/// Brand mark: the app icon (when bundled) and "Jethriki" in ribbon colours.
 struct BrandMark: View {
     var body: some View {
         HStack(spacing: 8) {
@@ -212,7 +212,7 @@ struct BrandMark: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 26, height: 26)
-            Text("Sipass")
+            Text("Jethriki")
                 .font(.system(size: 17, weight: .heavy, design: .rounded))
                 .foregroundStyle(Theme.ribbon)
         }

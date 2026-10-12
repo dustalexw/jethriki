@@ -37,8 +37,8 @@ public sealed class MainWindow : Window {
 
     public MainWindow(AppSession session) {
         this.session = session; store = session.Store; tools = session.Tools; queue = session.Queue;
-        Title = "Sipass"; Width = 1280; Height = 820; MinWidth = 980; MinHeight = 640; WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        using (var icon = AssetLoader.Open(new Uri("avares://Sipass/Assets/AppIcon.png"))) Icon = new WindowIcon(icon);
+        Title = "Jethriki"; Width = 1280; Height = 820; MinWidth = 980; MinHeight = 640; WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        using (var icon = AssetLoader.Open(new Uri("avares://Jethriki/Assets/AppIcon.png"))) Icon = new WindowIcon(icon);
         Build();
         App.Instance.AppearanceChanged += Rebuild;
         timer.Tick += (_, _) => Tick(); timer.Start();
@@ -59,7 +59,7 @@ public sealed class MainWindow : Window {
         };
         Closing += async (_, e) => {
             if (closing) return; e.Cancel = true; closing = true; timer.Stop(); searchCancellation?.Cancel();
-            try { store.Save(); await queue.StopAsync(); } catch (Exception error) { await Dialogs.Message(this, "Closing Sipass", error.Message); }
+            try { store.Save(); await queue.StopAsync(); } catch (Exception error) { await Dialogs.Message(this, "Closing Jethriki", error.Message); }
             App.Instance.AppearanceChanged -= Rebuild; Close();
         };
     }
@@ -72,10 +72,10 @@ public sealed class MainWindow : Window {
 
         // Row 1: brand, compact link field, Download.
         var top = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
-        Bitmap logo; using (var s = AssetLoader.Open(new Uri("avares://Sipass/Assets/AppIcon.png"))) logo = new Bitmap(s);
+        Bitmap logo; using (var s = AssetLoader.Open(new Uri("avares://Jethriki/Assets/AppIcon.png"))) logo = new Bitmap(s);
         var brand = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 9, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0),
             Children = { new Image { Source = logo, Width = 30, Height = 30 },
-                new TextBlock { Text = "Sipass", FontSize = 19, FontWeight = FontWeight.Black, Foreground = Look.Ribbon(), VerticalAlignment = VerticalAlignment.Center } } };
+                new TextBlock { Text = "Jethriki", FontSize = 19, FontWeight = FontWeight.Black, Foreground = Look.Ribbon(), VerticalAlignment = VerticalAlignment.Center } } };
         top.Children.Add(brand);
         urls = new TextBox { Classes = { "bare" }, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, Watermark = "Paste a link — or several, one per line", FontSize = 14,
             MaxHeight = 92, VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center, Text = linkText };
@@ -321,7 +321,7 @@ public sealed class MainWindow : Window {
     }
     void ShowLog() { if (SelectedJob() is { } job) new LogWindow(job).Show(this); }
     void OpenFolder(string path) { try { Directory.CreateDirectory(path); Shell.Open(path); } catch (Exception error) { _ = Error(error); } }
-    async Task Error(Exception error) { footer.Text = error.Message; await Dialogs.Message(this, "Sipass", error.Message); }
+    async Task Error(Exception error) { footer.Text = error.Message; await Dialogs.Message(this, "Jethriki", error.Message); }
 }
 
 /// One queue entry: status tile, title, stage, speed and a ribbon progress bar.
