@@ -30,7 +30,7 @@ struct YTDLPStudioApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Sipass") {
+        WindowGroup("Jethriki") {
             ContentView()
                 .environmentObject(store)
                 .environmentObject(tools)
@@ -42,12 +42,12 @@ struct YTDLPStudioApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(replacing: .appInfo) {
-                Button("About Sipass") { openWindow(id: "about", value: "about") }
+                Button("About Jethriki") { openWindow(id: "about", value: "about") }
             }
         }
 
         // A value-based group never opens on launch (a plain `Window` scene would flash up at startup).
-        WindowGroup("About Sipass", id: "about", for: String.self) { _ in
+        WindowGroup("About Jethriki", id: "about", for: String.self) { _ in
             AboutView()
                 .environmentObject(tools)
                 .tint(Theme.accent)

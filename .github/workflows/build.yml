@@ -32,32 +32,32 @@ jobs:
         run: ./Windows/scripts/build.ps1 -Version $env:VERSION
       - name: Test core and bundled media processing
         run: |
-          $env:YTDLP_TEST_TOOLS = (Resolve-Path 'Windows/dist/Sipass/tools').Path
+          $env:YTDLP_TEST_TOOLS = (Resolve-Path 'Windows/dist/Jethriki/tools').Path
           dotnet run --project Windows/Tests/YtdlpStudio.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Windows tests failed.' }
       - name: Start native Windows interface
         run: |
-          $app = Resolve-Path 'Windows/dist/Sipass/Sipass.exe'
+          $app = Resolve-Path 'Windows/dist/Jethriki/Jethriki.exe'
           $process = Start-Process $app -ArgumentList '--smoke-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) {
-            Get-Content 'Windows/dist/Sipass/smoke-test-error.txt' -ErrorAction SilentlyContinue
+            Get-Content 'Windows/dist/Jethriki/smoke-test-error.txt' -ErrorAction SilentlyContinue
             throw 'Native UI smoke test failed.'
           }
       - name: Save native interface preview
         uses: actions/upload-artifact@v7
         with:
           name: Windows-interface-preview
-          path: Windows/dist/Sipass/Windows-smoke*.png
+          path: Windows/dist/Jethriki/Windows-smoke*.png
           if-no-files-found: error
       - name: Package portable ZIP
         run: |
-          Remove-Item 'Windows/dist/Sipass/Windows-smoke*.png'
-          Compress-Archive -Path 'Windows/dist/Sipass' -DestinationPath "Windows/dist/Sipass-$env:VERSION-Windows-x64.zip"
-          Get-FileHash "Windows/dist/Sipass-$env:VERSION-Windows-x64.zip" -Algorithm SHA256 | Format-List
+          Remove-Item 'Windows/dist/Jethriki/Windows-smoke*.png'
+          Compress-Archive -Path 'Windows/dist/Jethriki' -DestinationPath "Windows/dist/Jethriki-$env:VERSION-Windows-x64.zip"
+          Get-FileHash "Windows/dist/Jethriki-$env:VERSION-Windows-x64.zip" -Algorithm SHA256 | Format-List
       - uses: actions/upload-artifact@v7
         with:
-          name: Sipass-${{ env.VERSION }}-Windows-x64
-          path: Windows/dist/Sipass-${{ env.VERSION }}-Windows-x64.zip
+          name: Jethriki-${{ env.VERSION }}-Windows-x64
+          path: Windows/dist/Jethriki-${{ env.VERSION }}-Windows-x64.zip
           retention-days: 30
           if-no-files-found: error
 
@@ -74,8 +74,8 @@ jobs:
         run: ./build.sh universal
       - name: Verify app bundle
         run: |
-          APP="build/Sipass.app"
-          archs=$(lipo -archs "$APP/Contents/MacOS/Sipass")
+          APP="build/Jethriki.app"
+          archs=$(lipo -archs "$APP/Contents/MacOS/Jethriki")
           echo "Architectures: $archs"
           [[ "$archs" == *arm64* && "$archs" == *x86_64* ]] || { echo "::error::Expected a universal arm64 + x86_64 binary"; exit 1; }
           codesign --verify --deep --strict "$APP"
@@ -83,19 +83,19 @@ jobs:
           [[ "$bundled" == "$VERSION" ]] || { echo "::error::Info.plist says $bundled, expected $VERSION"; exit 1; }
       - name: Launch smoke test
         run: |
-          "build/Sipass.app/Contents/MacOS/Sipass" & pid=$!
+          "build/Jethriki.app/Contents/MacOS/Jethriki" & pid=$!
           sleep 8
           kill -0 $pid || { echo "::error::App exited during launch"; exit 1; }
           kill $pid
       - name: Package ZIP
         run: |
           # ditto keeps the code signature and bundle metadata intact.
-          ditto -c -k --keepParent "build/Sipass.app" "Sipass-$VERSION-macOS.zip"
-          shasum -a 256 "Sipass-$VERSION-macOS.zip"
+          ditto -c -k --keepParent "build/Jethriki.app" "Jethriki-$VERSION-macOS.zip"
+          shasum -a 256 "Jethriki-$VERSION-macOS.zip"
       - uses: actions/upload-artifact@v7
         with:
-          name: Sipass-${{ env.VERSION }}-macOS
-          path: Sipass-${{ env.VERSION }}-macOS.zip
+          name: Jethriki-${{ env.VERSION }}-macOS
+          path: Jethriki-${{ env.VERSION }}-macOS.zip
           retention-days: 30
           if-no-files-found: error
 
@@ -111,12 +111,12 @@ jobs:
         run: Linux/scripts/build.sh "$VERSION"
       - name: Test core and bundled media processing
         run: |
-          export YTDLP_TEST_TOOLS="$PWD/Linux/dist/Sipass/tools"
+          export YTDLP_TEST_TOOLS="$PWD/Linux/dist/Jethriki/tools"
           dotnet run --project Windows/Tests/YtdlpStudio.Tests.csproj -c Release
       - name: Start interface on a virtual display
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q xvfb libice6 libsm6 libfontconfig1
-          if ! xvfb-run -a -s "-screen 0 1600x1000x24" "Linux/dist/Sipass/Sipass" --smoke-test "$RUNNER_TEMP"; then
+          if ! xvfb-run -a -s "-screen 0 1600x1000x24" "Linux/dist/Jethriki/Jethriki" --smoke-test "$RUNNER_TEMP"; then
             cat "$RUNNER_TEMP/smoke-test-error.txt" 2>/dev/null || true
             echo "::error::Linux interface smoke test failed"; exit 1
           fi
@@ -130,12 +130,12 @@ jobs:
       - name: Package portable archive
         run: |
           # tar keeps the executable bits that a ZIP would lose.
-          tar -C Linux/dist -czf "Sipass-$VERSION-Linux-x64.tar.gz" "Sipass"
-          sha256sum "Sipass-$VERSION-Linux-x64.tar.gz"
+          tar -C Linux/dist -czf "Jethriki-$VERSION-Linux-x64.tar.gz" "Jethriki"
+          sha256sum "Jethriki-$VERSION-Linux-x64.tar.gz"
       - uses: actions/upload-artifact@v7
         with:
-          name: Sipass-${{ env.VERSION }}-Linux-x64
-          path: Sipass-${{ env.VERSION }}-Linux-x64.tar.gz
+          name: Jethriki-${{ env.VERSION }}-Linux-x64
+          path: Jethriki-${{ env.VERSION }}-Linux-x64.tar.gz
           retention-days: 30
           if-no-files-found: error
 
@@ -152,7 +152,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v7
         with:
-          pattern: Sipass-${{ env.VERSION }}-*
+          pattern: Jethriki-${{ env.VERSION }}-*
           merge-multiple: true
           path: package
       - name: Publish Windows, macOS and Linux packages
@@ -160,9 +160,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="v$VERSION"
-          win="package/Sipass-$VERSION-Windows-x64.zip"
-          mac="package/Sipass-$VERSION-macOS.zip"
-          linux="package/Sipass-$VERSION-Linux-x64.tar.gz"
+          win="package/Jethriki-$VERSION-Windows-x64.zip"
+          mac="package/Jethriki-$VERSION-macOS.zip"
+          linux="package/Jethriki-$VERSION-Linux-x64.tar.gz"
           ls -l package
           [[ -f "$win" && -f "$mac" && -f "$linux" ]] || { echo "::error::Missing a platform package"; exit 1; }
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -171,5 +171,5 @@ jobs:
             exit 1
           fi
           gh release create "$tag" "$win" "$mac" "$linux" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Sipass $VERSION — Windows, macOS and Linux" \
+            --title "Jethriki $VERSION — Windows, macOS and Linux" \
             --notes-file RELEASE-NOTES.md --latest

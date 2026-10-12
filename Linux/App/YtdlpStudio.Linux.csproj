@@ -2,8 +2,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType><TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
-    <AssemblyName>Sipass</AssemblyName><RootNamespace>YtdlpStudio.Linux</RootNamespace><Version>2.4.1</Version>
-    <Company>Sipass</Company><Product>Sipass</Product>
+    <AssemblyName>Jethriki</AssemblyName><RootNamespace>YtdlpStudio.Linux</RootNamespace><Version>2.4.1</Version>
+    <Company>Jethriki</Company><Product>Jethriki</Product>
     <Description>Linux video and audio downloader</Description>
     <ApplicationIcon>../../Windows/App/AppIcon.ico</ApplicationIcon>
     <BuiltInComInteropSupport>false</BuiltInComInteropSupport>

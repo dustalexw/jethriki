@@ -41,7 +41,7 @@ public sealed class MainForm : Form {
         SuspendLayout(); AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
         options = new OptionsPanel(OptionsChanged);
-        Text = "Sipass " + AppVersion; Font = new Font("Segoe UI", 10); Size = new Size(1280, 820); MinimumSize = new Size(980, 640); StartPosition = FormStartPosition.CenterScreen;
+        Text = "Jethriki " + AppVersion; Font = new Font("Segoe UI", 10); Size = new Size(1280, 820); MinimumSize = new Size(980, 640); StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true; BackColor = p.Bottom; ForeColor = p.Text;
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         Theme.StyleTitleBar(this);
@@ -187,7 +187,7 @@ public sealed class MainForm : Form {
         };
         FormClosing += async (_, e) => {
             if (closing || retiring) return; e.Cancel = true; closing = true; timer.Stop(); searchCancellation?.Cancel();
-            try { store.Save(); await queue.StopAsync(); } catch (Exception error) { MessageBox.Show(error.Message, "Closing Sipass"); }
+            try { store.Save(); await queue.StopAsync(); } catch (Exception error) { MessageBox.Show(error.Message, "Closing Jethriki"); }
             Close();
         };
     }
@@ -418,7 +418,7 @@ public sealed class MainForm : Form {
         using var refresh = new System.Windows.Forms.Timer { Interval = 500 }; refresh.Tick += (_, _) => { if (job.Active) { text.Text = string.Join(Environment.NewLine, job.Log.ToArray()); text.SelectionStart = text.Text.Length; text.ScrollToCaret(); } }; refresh.Start(); dialog.ShowDialog(this);
     }
     void OpenFolder(string path) { try { Directory.CreateDirectory(path); Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); } catch (Exception error) { Error(error); } }
-    void Error(Exception error) { if (!IsDisposed) { footer.Text = error.Message; MessageBox.Show(this, error.Message, "Sipass", MessageBoxButtons.OK, MessageBoxIcon.Error); } }
+    void Error(Exception error) { if (!IsDisposed) { footer.Text = error.Message; MessageBox.Show(this, error.Message, "Jethriki", MessageBoxButtons.OK, MessageBoxIcon.Error); } }
     string? Prompt(string title, string label) {
         using var dialog = new Form { Text = title, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, ShowInTaskbar = false, Font = Font };
         var layout = new TableLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Padding = new Padding(LogicalToDeviceUnits(16)) };

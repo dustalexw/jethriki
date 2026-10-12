@@ -173,19 +173,19 @@ public sealed class Segmented : PaintedButton {
     }
 }
 
-/// App icon plus "Sipass" in ribbon colours.
+/// App icon plus "Jethriki" in ribbon colours.
 public sealed class BrandMark : PaintedControl {
     readonly Image? icon;
     readonly Font font = new("Segoe UI Black", 14f);
-    public BrandMark(Icon? appIcon) { icon = appIcon == null ? null : new Icon(appIcon, 64, 64).ToBitmap(); Size = new Size(130, 44); Margin = new Padding(0, 0, 10, 0); AccessibleName = "Sipass"; }
+    public BrandMark(Icon? appIcon) { icon = appIcon == null ? null : new Icon(appIcon, 64, 64).ToBitmap(); Size = new Size(160, 44); Margin = new Padding(0, 0, 10, 0); AccessibleName = "Jethriki"; }
     protected override void OnPaint(PaintEventArgs e) {
         var g = e.Graphics; Theme.Smooth(g); g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         int size = (int)S(30), y = (Height - size) / 2;
         if (icon != null) g.DrawImage(icon, new Rectangle(0, y, size, size));
-        var name = TextRenderer.MeasureText(g, "Sipass", font, Size.Empty, TextFormatFlags.NoPadding);
+        var name = TextRenderer.MeasureText(g, "Jethriki", font, Size.Empty, TextFormatFlags.NoPadding);
         var textRect = new RectangleF(size + S(9), (Height - name.Height) / 2f, name.Width + 2, name.Height);
         using var ribbon = Theme.Ribbon(textRect); using var format = new StringFormat(StringFormat.GenericTypographic);
-        g.DrawString("Sipass", font, ribbon, textRect.Location, format);
+        g.DrawString("Jethriki", font, ribbon, textRect.Location, format);
     }
     protected override void Dispose(bool disposing) { if (disposing) { icon?.Dispose(); font.Dispose(); } base.Dispose(disposing); }
 }

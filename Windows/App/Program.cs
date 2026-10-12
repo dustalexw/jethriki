@@ -29,7 +29,7 @@ internal static class Program {
             } catch (Exception error) { File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-test-error.txt"), error.ToString()); Environment.ExitCode = 1; }
             return;
         }
-        Application.ThreadException += (_, e) => MessageBox.Show(e.Exception.Message, "Sipass", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        Application.ThreadException += (_, e) => MessageBox.Show(e.Exception.Message, "Jethriki", MessageBoxButtons.OK, MessageBoxIcon.Error);
         var app = new AppSession();
         app.Context = new ApplicationContext(new MainForm(app));
         Application.Run(app.Context);

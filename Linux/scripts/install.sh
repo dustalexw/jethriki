@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Adds Sipass to the applications menu for the current user (no root needed).
+# Adds Jethriki to the applications menu for the current user (no root needed).
 #   ./install.sh             create the menu entry and icon
 #   ./install.sh --uninstall remove them (the app folder itself is left alone)
 set -euo pipefail
@@ -9,7 +9,7 @@ desktop="$data/applications/sipass.desktop"; icon="$data/icons/hicolor/256x256/a
 # Entries from before the app was renamed from YT-DLP Studio.
 legacy=("$data/applications/ytdlp-studio.desktop" "$data/icons/hicolor/256x256/apps/ytdlp-studio.png")
 if [[ "${1:-}" == "--uninstall" ]]; then
-  rm -f "$desktop" "$icon" "${legacy[@]}"; echo "Removed the Sipass menu entry."; exit 0
+  rm -f "$desktop" "$icon" "${legacy[@]}"; echo "Removed the Jethriki menu entry."; exit 0
 fi
 rm -f "${legacy[@]}"
 mkdir -p "$(dirname "$desktop")" "$(dirname "$icon")"
@@ -17,13 +17,13 @@ cp "$here/sipass.png" "$icon"
 cat > "$desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Sipass
+Name=Jethriki
 Comment=Download video and audio with yt-dlp
-Exec="$here/Sipass"
+Exec="$here/Jethriki"
 Icon=sipass
 Terminal=false
 Categories=AudioVideo;Network;
-StartupWMClass=Sipass
+StartupWMClass=Jethriki
 DESKTOP
 command -v update-desktop-database >/dev/null && update-desktop-database "$data/applications" >/dev/null 2>&1 || true
-echo "Added Sipass to your applications menu."
+echo "Added Jethriki to your applications menu."

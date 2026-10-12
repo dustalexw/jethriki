@@ -3,9 +3,9 @@
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms><EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
-    <AssemblyName>Sipass</AssemblyName><Version>2.4.1</Version>
+    <AssemblyName>Jethriki</AssemblyName><Version>2.4.1</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode><ApplicationIcon>AppIcon.ico</ApplicationIcon><ApplicationManifest>app.manifest</ApplicationManifest>
-    <Company>Sipass</Company><Product>Sipass</Product>
+    <Company>Jethriki</Company><Product>Jethriki</Product>
     <Description>Native Windows video and audio downloader</Description>
     <!-- Custom controls are built in code, never in the designer. -->
     <NoWarn>$(NoWarn);WFO1000</NoWarn>

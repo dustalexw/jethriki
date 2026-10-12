@@ -30,7 +30,7 @@ struct AboutView: View {
             .controlSize(.regular)
             .padding(.top, 16)
 
-            Text("Sipass is a front end. Downloading is done by yt-dlp and FFmpeg, each under its own licence.\nPlease only download content you have the right to save.")
+            Text("Jethriki is a front end. Downloading is done by yt-dlp and FFmpeg, each under its own licence.\nPlease only download content you have the right to save.")
                 .font(.system(size: 11))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -49,7 +49,7 @@ struct AboutView: View {
                 .interpolation(.high)
                 .frame(width: 104, height: 104)
                 .shadow(color: Theme.violet.opacity(0.55), radius: 22, y: 6)
-            Text("Sipass")
+            Text("Jethriki")
                 .font(.system(size: 34, weight: .heavy, design: .rounded))
                 .foregroundStyle(Theme.ribbon)
             Text("Every yt-dlp and FFmpeg feature, in a native app")

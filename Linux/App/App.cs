@@ -21,9 +21,9 @@ public sealed class App : Application {
         fluent.Palettes[ThemeVariant.Dark] = new ColorPaletteResources { Accent = Look.Violet };
         fluent.Palettes[ThemeVariant.Light] = new ColorPaletteResources { Accent = Look.Violet };
         Styles.Add(fluent);
-        Styles.Add(new StyleInclude(new Uri("avares://Sipass/")) { Source = new Uri("avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml") });
+        Styles.Add(new StyleInclude(new Uri("avares://Jethriki/")) { Source = new Uri("avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml") });
         Styles.Add(custom);
-        Name = "Sipass";
+        Name = "Jethriki";
     }
 
     public override void OnFrameworkInitializationCompleted() {

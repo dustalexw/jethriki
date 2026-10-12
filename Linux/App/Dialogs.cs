@@ -83,7 +83,7 @@ public sealed class SettingsWindow : ThemedWindow {
             Heading("About"),
             Look.Card(new StackPanel { Spacing = 8, Children = {
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = {
-                    new TextBlock { Text = "Sipass", FontSize = 26, FontWeight = FontWeight.ExtraBold, Foreground = Look.Ribbon(), VerticalAlignment = VerticalAlignment.Center },
+                    new TextBlock { Text = "Jethriki", FontSize = 26, FontWeight = FontWeight.ExtraBold, Foreground = Look.Ribbon(), VerticalAlignment = VerticalAlignment.Center },
                     new Border { CornerRadius = new CornerRadius(9), Padding = new Thickness(8, 2), VerticalAlignment = VerticalAlignment.Center, BorderThickness = new Thickness(1), BorderBrush = Look.B(Look.P.Hairline),
                         Child = new TextBlock { Text = "v" + AppSession.Version, FontSize = 12, FontFamily = new FontFamily("DejaVu Sans Mono, monospace"), Classes = { "secondary" } } } } },
                 new TextBlock { Text = "Every yt-dlp and FFmpeg feature, in a native desktop app for macOS, Windows and Linux.", TextWrapping = TextWrapping.Wrap },

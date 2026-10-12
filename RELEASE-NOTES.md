@@ -1,3 +1,8 @@
+### Unreleased — Jethriki
+- Renamed Sipass to **Jethriki** across the app, About pages, menus, and platform packages. Existing settings and presets carry over.
+
+---
+
 A small fix for macOS.
 
 ### What's new in 2.4.1
