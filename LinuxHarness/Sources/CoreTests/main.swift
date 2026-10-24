@@ -127,11 +127,12 @@ if case .failure(let e) = blocking({ try await MetadataFetcher.fetch(url: "http:
 // MARK: - 5. End-to-end through the real DownloadManager
 
 let manager = DownloadManager()
-func run(_ name: String, timeout: TimeInterval = 240, _ configure: (inout DownloadOptions) -> Void) -> DownloadJob {
-    var o = DownloadOptions()
+func run(_ name: String, timeout: TimeInterval = 240, source: String = url, base: DownloadOptions = DownloadOptions(),
+         _ configure: (inout DownloadOptions) -> Void) -> DownloadJob {
+    var o = base
     o.outputDirectory = outRoot + "/" + name.replacingOccurrences(of: " ", with: "_")
     configure(&o)
-    manager.enqueue(urls: [url], options: o, tools: snap)
+    manager.enqueue(urls: [source], options: o, tools: snap)
     let job = manager.jobs.last!
     let ok = waitUntil(timeout) { job.status.isDone }
     if !ok || job.status != .finished {
@@ -193,6 +194,31 @@ do {
     let j = run("trim") { o in o.trimEnabled = true; o.trimStart = "3"; o.trimEnd = "9"; o.forceKeyframes = true }
     let d = probe(j.outputFiles.first ?? "").duration ?? -1
     check(abs(d - 6) < 1.0, "6 s section (got \(String(format: "%.2f", d)) s)")
+}
+
+section("E2E: iPhone ringtone preset")
+do {
+    let preset = OptionsStore.builtInPresets.first { $0.options.makesRingtone }!.options
+    let song = "http://127.0.0.1:8766/song.mp4"   // 50 s, longer than iOS allows
+    func meanVolume(_ path: String, _ seek: [String]) -> Double {
+        let r = runSync("/usr/bin/env", ["ffmpeg", "-v", "info"] + seek + ["-i", path, "-af", "volumedetect", "-f", "null", "-"])
+        guard let m = r.stderr.range(of: #"mean_volume: -?[\d.]+"#, options: .regularExpression) else { return 0 }
+        return Double(r.stderr[m].dropFirst("mean_volume: ".count)) ?? 0
+    }
+    let j = run("ringtone", source: song, base: preset) { _ in }
+    let f = j.outputFiles.first ?? ""
+    check(j.status == .finished && j.outputFiles.count == 1 && f.hasSuffix(".m4r") && FileManager.default.fileExists(atPath: f)
+          && !FileManager.default.fileExists(atPath: (f as NSString).deletingPathExtension + ".m4a"),
+          "saved as .m4r, no .m4a left behind", "\(j.status.label) \(j.outputFiles)")
+    let p = probe(f)
+    check(p.acodec == "aac" && p.sampleRate == 44100 && p.channels == 2 && abs((p.duration ?? 0) - 30) < 0.3,
+          "30 s AAC 44.1 kHz stereo (\(p.acodec ?? "-"), \(p.duration ?? -1) s)")
+    check(meanVolume(f, ["-sseof", "-0.1"]) < meanVolume(f, ["-ss", "15", "-t", "1"]) - 15, "fades out at the end")
+    let whole = run("ringtone", source: song, base: preset) { $0.trimEnabled = false }
+    let g = whole.outputFiles.first ?? ""
+    check(abs((probe(g).duration ?? 0) - 40) < 0.3, "whole song is capped at 40 s (\(probe(g).duration ?? -1) s)")
+    check((g as NSString).lastPathComponent == "song 2.m4r" && FileManager.default.fileExists(atPath: f),
+          "an existing ringtone is kept and the new one numbered", (g as NSString).lastPathComponent)
 }
 
 section("E2E: FFmpeg re-encode pass, every software encoder, downscale + loudnorm")

@@ -131,6 +131,21 @@ final class OptionsStore: ObservableObject {
                 o.channels = .mono
                 o.normalizeAudio = true
             },
+            make("iPhone ringtone · M4R, 30 s") { o in
+                o.mode = .audio
+                o.audioFormat = .m4r
+                o.audioQuality = .k256
+                o.sampleRate = .r44100
+                o.channels = .stereo
+                // Only the first 30 s are downloaded; change Trim to pick another part of the song.
+                o.trimEnabled = true
+                o.trimStart = "00:00:00"
+                o.trimEnd = "00:00:\(Ringtone.defaultSeconds)"
+                // Cover art and chapters are of no use to a ringtone and only add size.
+                o.embedThumbnail = false
+                o.embedChapters = false
+                o.playlistMode = .single
+            },
             make("Album · split chapters to MP3") { o in
                 o.mode = .audio
                 o.audioFormat = .mp3

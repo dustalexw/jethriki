@@ -40,6 +40,9 @@ for n in a b c d; do cp plain.mp4 $n.mp4; done
 # 10-second keyframe spacing, like many YouTube streams: exposes cut artifacts.
 ffmpeg -loglevel error -y -f lavfi -i "testsrc2=size=640x360:rate=25:duration=30" -f lavfi -i "sine=frequency=330:duration=30" \
   -c:v libx264 -g 250 -keyint_min 250 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -shortest longgop.mp4
+# 50 seconds: longer than iOS allows for a ringtone.
+ffmpeg -loglevel error -y -f lavfi -i "testsrc2=size=320x240:rate=10:duration=50" -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=50" \
+  -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest song.mp4
 for t in webp jpg; do ffmpeg -loglevel error -y -f lavfi -i testsrc2=size=1280x720 -frames:v 1 thumb.$t; done
 mkdir -p x y; cp plain.mp4 x/clip.mp4; cp plain.mp4 y/clip.mp4
 python3 -m RangeHTTPServer 8766 --bind 127.0.0.1 >/dev/null 2>&1 & SERVER=$!

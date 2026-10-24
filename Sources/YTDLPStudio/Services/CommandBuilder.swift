@@ -36,10 +36,12 @@ enum CommandBuilder {
         case .audio:
             a += ["-f", custom.isEmpty ? "ba/b" : custom]
             if let s = sortString(o) { a += ["-S", s] }
-            a += ["-x", "--audio-format", o.audioFormat.rawValue]
+            a += ["-x", "--audio-format", o.audioFormat.ytdlpFormat]
             if !o.audioFormat.isLossless { a += ["--audio-quality", o.audioQuality.arg] }
             let af = audioFilterArgs(o)
-            if !af.isEmpty && o.audioFormat != .best {
+            if o.audioFormat.isRingtone {
+                a += ["--postprocessor-args", "ExtractAudio+ffmpeg_o:" + ringtoneArgs(o).joined(separator: " ")]
+            } else if !af.isEmpty && o.audioFormat != .best {
                 a += ["--postprocessor-args", "ExtractAudio+ffmpeg_o:" + af.joined(separator: " ")]
             }
         case .video, .videoOnly:
@@ -236,10 +238,31 @@ enum CommandBuilder {
         return t.isEmpty ? nil : t.joined(separator: ",")
     }
 
-    static func audioFilterArgs(_ o: DownloadOptions) -> [String] {
+    static func audioFilters(_ o: DownloadOptions) -> [String] {
         var filters: [String] = []
         if o.volumeDB != 0 { filters.append("volume=\(String(format: "%.1f", o.volumeDB))dB") }
         if o.normalizeAudio { filters.append("loudnorm=I=-16:TP=-1.5:LRA=11") }
+        return filters
+    }
+
+    /// FFmpeg output options that turn the extracted audio into a ringtone iOS accepts:
+    /// AAC re-encoded (so the filters run even when the source is already AAC, where yt-dlp
+    /// would otherwise stream-copy), capped at 40 s, short fade-in, fade-out at the real end,
+    /// 44.1 kHz stereo unless the user picked otherwise. The user's volume/loudness filters still apply.
+    static func ringtoneArgs(_ o: DownloadOptions) -> [String] {
+        let bitrate = o.audioQuality.arg.hasSuffix("K")
+            ? o.audioQuality.arg.lowercased() : Ringtone.defaultBitrate
+        // Fading the reversed clip in fades the real clip out, whatever length the cut ended up.
+        let chain = ["atrim=end=\(Ringtone.maxSeconds)", "asetpts=PTS-STARTPTS"] + audioFilters(o) + [
+            "afade=t=in:d=\(Ringtone.fadeInSeconds)",
+            "areverse", "afade=t=in:d=\(Ringtone.fadeOutSeconds)", "areverse"
+        ]
+        return ["-c:a", "aac", "-b:a", bitrate, "-af", chain.joined(separator: ","),
+                "-ar", "\(o.sampleRate.value ?? 44100)", "-ac", "\(o.channels.value ?? 2)"]
+    }
+
+    static func audioFilterArgs(_ o: DownloadOptions) -> [String] {
+        let filters = audioFilters(o)
         var args: [String] = []
         if !filters.isEmpty { args += ["-af", filters.joined(separator: ",")] }
         if let sr = o.sampleRate.value { args += ["-ar", "\(sr)"] }

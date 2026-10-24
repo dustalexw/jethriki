@@ -154,7 +154,7 @@ enum FPSLimit: String, OptionEnum {
 // MARK: - Audio
 
 enum AudioFormat: String, OptionEnum {
-    case best, mp3, m4a, aac, opus, vorbis, flac, alac, wav
+    case best, mp3, m4a, aac, opus, vorbis, flac, alac, wav, m4r
     var label: String {
         switch self {
         case .best: return "Best (keep original codec)"
@@ -166,17 +166,36 @@ enum AudioFormat: String, OptionEnum {
         case .flac: return "FLAC (lossless)"
         case .alac: return "ALAC (Apple lossless)"
         case .wav: return "WAV (uncompressed)"
+        case .m4r: return "iPhone ringtone (M4R)"
         }
     }
     var isLossless: Bool { [.flac, .alac, .wav].contains(self) }
+    /// A ready-to-sync iTunes / iPhone ringtone: AAC in an MPEG-4 file named .m4r, at most 40 seconds.
+    var isRingtone: Bool { self == .m4r }
+    /// The codec handed to yt-dlp's --audio-format. yt-dlp has no M4R target, so a ringtone is
+    /// written as M4A (the same container) and the app renames it to .m4r once it is finished.
+    var ytdlpFormat: String { self == .m4r ? AudioFormat.m4a.rawValue : rawValue }
     /// Prefer a source stream that already matches, so no lossy-to-lossy transcode is needed.
     var preferredSourceSort: String? {
         switch self {
-        case .m4a, .aac: return "acodec:aac"
+        case .m4a, .aac, .m4r: return "acodec:aac"
         case .opus: return "acodec:opus"
         default: return nil
         }
     }
+}
+
+/// What iTunes, Finder and iOS accept as a ringtone.
+enum Ringtone {
+    static let fileExtension = "m4r"
+    /// iOS rejects ringtones longer than 40 seconds; the app enforces this whatever the trim settings.
+    static let maxSeconds = 40
+    /// Seconds a preset ringtone clip lasts by default.
+    static let defaultSeconds = 30
+    static let fadeInSeconds = 0.3
+    static let fadeOutSeconds = 2.0
+    /// Bitrate used when a VBR quality is chosen, since Apple's own ringtones are constant-bitrate AAC.
+    static let defaultBitrate = "256k"
 }
 
 enum AudioQuality: String, OptionEnum {
@@ -579,6 +598,8 @@ struct DownloadOptions: Codable, Equatable {
     var forcesKeyframes: Bool {
         (trimEnabled && forceKeyframes) || (cutsVideoSegments && preciseCuts)
     }
+    /// The download is finished as an iPhone ringtone (.m4r).
+    var makesRingtone: Bool { mode == .audio && audioFormat.isRingtone }
     /// Music tagging is active for this download.
     var musicTagsActive: Bool {
         embedMetadata && musicTags && (mode == .audio || musicTagsOnVideo)

@@ -172,6 +172,36 @@ final class DownloadJob: ObservableObject, Identifiable {
     }
 }
 
+extension Ringtone {
+    /// Gives finished ringtones their .m4r name, so they can be dropped straight onto an iPhone in
+    /// Finder or into iTunes / Apple Devices. Returns the file list with the new paths.
+    static func finalize(_ files: [String], keepExisting: Bool, log: (String) -> Void) -> [String] {
+        let fm = FileManager.default
+        return files.map { path in
+            guard (path as NSString).pathExtension.lowercased() == "m4a", fm.fileExists(atPath: path) else { return path }
+            let base = (path as NSString).deletingPathExtension
+            var target = base + "." + fileExtension
+            if fm.fileExists(atPath: target) {
+                if keepExisting {
+                    var n = 2
+                    while fm.fileExists(atPath: "\(base) \(n).\(fileExtension)") { n += 1 }
+                    target = "\(base) \(n).\(fileExtension)"
+                } else {
+                    try? fm.removeItem(atPath: target)
+                }
+            }
+            do {
+                try fm.moveItem(atPath: path, toPath: target)
+                log("[Ringtone] Saved \((target as NSString).lastPathComponent)")
+                return target
+            } catch {
+                log("[Ringtone] Could not rename to .\(fileExtension): \(error.localizedDescription)")
+                return path
+            }
+        }
+    }
+}
+
 final class DownloadManager: ObservableObject {
     @Published private(set) var jobs: [DownloadJob] = []
 
@@ -411,6 +441,9 @@ final class DownloadManager: ObservableObject {
     }
 
     private func complete(_ job: DownloadJob) {
+        if job.options.makesRingtone {
+            job.outputFiles = Ringtone.finalize(job.outputFiles, keepExisting: job.options.noOverwrites, log: job.appendLog)
+        }
         if case .warning = job.status {} else { job.status = .finished }
         job.progress = 1
         job.speed = ""; job.eta = ""

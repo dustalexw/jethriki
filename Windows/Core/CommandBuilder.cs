@@ -27,10 +27,11 @@ public static class CommandBuilder {
         Add("-f", string.IsNullOrWhiteSpace(o.CustomFormat) ? fallback : o.CustomFormat.Trim());
         var sort = Sort(o); if (sort.Length > 0) Add("-S", sort);
         if (o.Mode == "audio") {
-            Add("-x", "--audio-format", o.AudioFormat);
+            Add("-x", "--audio-format", o.AudioFormat == "m4r" ? "m4a" : o.AudioFormat);
             if (!new[] { "flac", "alac", "wav" }.Contains(o.AudioFormat)) Add("--audio-quality", o.AudioQuality.StartsWith('q') ? o.AudioQuality[1..] : o.AudioQuality[1..] + "K");
             var filters = AudioFilters(o);
-            if (filters.Count > 0 && o.AudioFormat != "best") Add("--postprocessor-args", "ExtractAudio+ffmpeg_o:" + string.Join(' ', filters));
+            if (o.AudioFormat == "m4r") Add("--postprocessor-args", "ExtractAudio+ffmpeg_o:" + string.Join(' ', Ringtone.FfmpegArguments(o)));
+            else if (filters.Count > 0 && o.AudioFormat != "best") Add("--postprocessor-args", "ExtractAudio+ffmpeg_o:" + string.Join(' ', filters));
         } else {
             if (o.Mode == "video") Add("--merge-output-format", o.Container);
             if (o.ForceRemux) Add("--remux-video", o.Container switch { "webm" => "mp4>mkv/mkv>mkv/webm", "mov" => "webm>mp4/mov", "avi" or "flv" => "webm>mkv/" + o.Container, _ => o.Container });
@@ -96,7 +97,7 @@ public static class CommandBuilder {
     public static string Sort(DownloadOptions o) {
         if (!string.IsNullOrWhiteSpace(o.CustomSort)) return o.CustomSort.Trim();
         var t = new List<string>();
-        if (o.Mode == "audio") { if (o.AudioFormat is "m4a" or "aac") t.Add("acodec:aac"); if (o.AudioFormat == "opus") t.Add("acodec:opus"); }
+        if (o.Mode == "audio") { if (o.AudioFormat is "m4a" or "aac" or "m4r") t.Add("acodec:aac"); if (o.AudioFormat == "opus") t.Add("acodec:opus"); }
         else {
             if (o.MaxResolution != "best") t.Add("res:" + o.MaxResolution[1..]);
             if (o.FpsLimit != "any") t.Add("fps:" + o.FpsLimit[3..]);
@@ -122,10 +123,14 @@ public static class CommandBuilder {
     public static string OutputTemplate(DownloadOptions o) => o.FilenameTemplate switch {
         "titleID" => "%(title)s [%(id)s].%(ext)s", "uploaderTitle" => "%(uploader)s - %(title)s.%(ext)s", "dateTitle" => "%(upload_date>%Y-%m-%d)s - %(title)s.%(ext)s", "uploaderFolder" => "%(uploader)s/%(title)s.%(ext)s", "playlistFolder" => "%(playlist_title|Singles)s/%(playlist_index&{} - |)s%(title)s.%(ext)s", "artistTitle" => "%(meta_artist,artist,uploader)s - %(meta_title,track,title)s.%(ext)s", "musicLibrary" => "%(meta_album_artist,album_artist,artist,uploader)s/%(meta_album,album,playlist_title,title)s/%(track_number,playlist_index&{:02d} |)s%(meta_title,track,title)s.%(ext)s", "custom" when !string.IsNullOrWhiteSpace(o.CustomTemplate) => o.CustomTemplate.Trim(), _ => "%(title)s.%(ext)s"
     };
-    public static List<string> AudioFilters(DownloadOptions o) {
-        var filters = new List<string>(); var a = new List<string>();
+    public static List<string> FilterChain(DownloadOptions o) {
+        var filters = new List<string>();
         if (o.VolumeDB != 0) filters.Add("volume=" + N(o.VolumeDB) + "dB");
         if (o.NormalizeAudio) filters.Add("loudnorm=I=-16:TP=-1.5:LRA=11");
+        return filters;
+    }
+    public static List<string> AudioFilters(DownloadOptions o) {
+        var filters = FilterChain(o); var a = new List<string>();
         if (filters.Count > 0) a.AddRange(["-af", string.Join(',', filters)]);
         if (o.SampleRate != "keep") a.AddRange(["-ar", o.SampleRate[1..]]);
         if (o.Channels != "keep") a.AddRange(["-ac", o.Channels == "mono" ? "1" : "2"]);
