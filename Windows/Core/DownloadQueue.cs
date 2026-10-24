@@ -140,6 +140,7 @@ public sealed class DownloadQueue(ToolPaths tools, Action<string>? recycle = nul
                     } catch { if (File.Exists(output)) File.Delete(output); throw; }
                 }
             }
+            if (o.MakesRingtone) outputs = Ringtone.Finalize(outputs, o.NoOverwrites, job.AddLog);
             job.OutputFiles = outputs.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(); job.Progress = 1;
             job.State = result.ExitCode == 0 ? JobState.Finished : JobState.Warning;
             job.Stage = result.ExitCode == 0 ? "Done" : "Done with warnings: " + job.LastError;

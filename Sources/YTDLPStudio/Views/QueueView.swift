@@ -180,7 +180,7 @@ struct JobRow: View {
 }
 
 private let mediaExtensions: Set<String> = [
-    "mp4", "mkv", "webm", "mov", "m4v", "avi", "flv", "mp3", "m4a", "opus", "ogg", "flac", "wav", "aac", "aiff"]
+    "mp4", "mkv", "webm", "mov", "m4v", "avi", "flv", "mp3", "m4a", "m4r", "opus", "ogg", "flac", "wav", "aac", "aiff"]
 
 /// Shown only once a download has finished: a thumbnail of the saved file with the check badge over it.
 /// Until the thumbnail is ready (or if none can be made) the plain check tile is shown.

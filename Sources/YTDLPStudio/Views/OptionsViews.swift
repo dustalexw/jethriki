@@ -122,6 +122,8 @@ struct AudioOptionsView: View {
                     Hint("These apply in Audio Only mode. Switch modes at the top of the window.")
                 } else if o.audioFormat.isLossless {
                     Hint("Lossless formats don't use a bitrate. Note that converting a lossy source to FLAC doesn't add quality.")
+                } else if o.audioFormat.isRingtone {
+                    Hint("Saves an .m4r ringtone ready for iTunes, Apple Devices or Finder: AAC, up to \(Ringtone.maxSeconds) seconds, with a short fade in and out. Use Trim to choose which part of the song plays.")
                 }
             }
             Section("FFmpeg audio filters") {

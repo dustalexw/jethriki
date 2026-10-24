@@ -111,6 +111,12 @@ thumbnail into a square cover. Official YouTube Music details are kept. When an 
 chapters, every track gets its own title, number and cover. Optional genre, plus “Artist - Song”
 and “Artist / Album / 01 Song” file-name templates. Works with MP3, M4A, FLAC, Opus and Vorbis.
 
+**iPhone ringtones** — the **iPhone ringtone (M4R)** audio format and its preset save a
+ringtone that is ready to use: an AAC `.m4r` file, 44.1 kHz stereo, never longer than the
+40 seconds iOS allows, with a short fade in and out. The preset takes the first 30 seconds;
+use Trim to pick another part of the song. Drag the file onto your iPhone in Finder (or the
+Apple Devices app / iTunes on Windows) and it appears under Settings › Sounds › Ringtone.
+
 **Trim** — download only a time range, with optional frame-accurate cuts.
 
 **Playlist** — single video vs whole playlist, item ranges like `1-5,8,-3::`, and a
@@ -127,8 +133,8 @@ folders) or your own, safe-ASCII names, overwrite and file-date behavior.
 **Queue** — several downloads at once (configurable), live progress, speed, ETA and
 size, post-processing stage, per-job log, cancel, retry and Show in Finder.
 
-**Presets** — nine built-ins (Best MKV, Compatible MP4, MP3 320, FLAC, Podcast,
-Album split, Ad-free, Shrink for sharing, Archive) plus your own. Settings persist
+**Presets** — ten built-ins (Best MKV, Compatible MP4, MP3 320, FLAC, Podcast,
+iPhone ringtone, Album split, Ad-free, Shrink for sharing, Archive) plus your own. Settings persist
 between launches.
 
 ## Notes

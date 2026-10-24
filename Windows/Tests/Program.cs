@@ -127,6 +127,44 @@ try {
         Check(Math.Abs(CommentChapters.Number(info["format"]!["duration"]) - 3) < 0.2, "Trim duration verified with ffprobe");
     }
 
+    // iPhone ringtone preset: AAC .m4r, 30 s by default, never longer than 40 s, faded out.
+    var ringtonePreset = SettingsStore.BuiltIn.Single(p => p.Options.MakesRingtone);
+    var ringtoneCommand = CommandBuilder.Arguments(ringtonePreset.Options, ["URL"]);
+    Check(ringtoneCommand[ringtoneCommand.IndexOf("--audio-format") + 1] == "m4a" && ringtoneCommand.Contains("*00:00:00-00:00:30")
+        && ringtoneCommand.Any(a => a.StartsWith("ExtractAudio+ffmpeg_o:-c:a aac -b:a 256k -af atrim=end=40,")), "Ringtone preset command");
+    var longVideo = Path.Combine(work, "long-song.mp4");
+    var longResult = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=10:duration=50", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=50", "-c:v", "libx264", "-c:a", "aac", "-shortest", longVideo]);
+    Check(longResult.ExitCode == 0, "Creates long ringtone source clip");
+    using var ringtoneServer = new LocalMediaServer(longVideo);
+    async Task<DownloadJob> DownloadRingtone(Action<DownloadOptions> edit) {
+        var options = ringtonePreset.Options.Clone(); options.OutputDirectory = Path.Combine(work, "ringtones"); options.ExtraArgs = "--enable-file-urls"; edit(options);
+        var queue = new DownloadQueue(real); queue.Enqueue([ringtoneServer.Url], options);
+        var ringJob = queue.Jobs[0]; await ringJob.Completion.WaitAsync(TimeSpan.FromSeconds(90));
+        if (ringJob.State != JobState.Finished) Console.WriteLine(string.Join('\n', ringJob.Log));
+        return ringJob;
+    }
+    async Task<(string Codec, double Duration, double Rate, double Channels, string Brand)> ProbeAudio(string path) {
+        var probe = await ProcessRunner.RunAsync(real.Ffprobe, ["-v", "error", "-show_streams", "-show_format", "-of", "json", path]);
+        var info = JsonNode.Parse(probe.Stdout)!; var stream = info["streams"]![0]!;
+        return (CommentChapters.Text(stream["codec_name"]), CommentChapters.Number(info["format"]!["duration"]), CommentChapters.Number(stream["sample_rate"]), CommentChapters.Number(stream["channels"]), CommentChapters.Text(info["format"]!["format_name"]));
+    }
+    var preset30 = await DownloadRingtone(_ => { });
+    Check(preset30.State == JobState.Finished && preset30.OutputFiles.Length == 1 && preset30.OutputFiles[0].EndsWith(".m4r") && File.Exists(preset30.OutputFiles[0])
+        && !File.Exists(Path.ChangeExtension(preset30.OutputFiles[0], ".m4a")), "Ringtone saved as .m4r: " + string.Join(", ", preset30.OutputFiles));
+    if (preset30.OutputFiles.FirstOrDefault(File.Exists) is { } ring30) {
+        var p = await ProbeAudio(ring30);
+        Check(p.Codec == "aac" && p.Rate == 44100 && p.Channels == 2 && p.Brand.Contains("m4a") && Math.Abs(p.Duration - 30) < 0.3, $"Ringtone is 30 s AAC 44.1 kHz stereo MPEG-4 ({p.Codec}, {p.Duration} s)");
+        var tail = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "info", "-sseof", "-0.1", "-i", ring30, "-af", "volumedetect", "-f", "null", "-"]);
+        var mid = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "info", "-ss", "15", "-t", "1", "-i", ring30, "-af", "volumedetect", "-f", "null", "-"]);
+        double Mean(string log) => double.Parse(System.Text.RegularExpressions.Regex.Match(log, @"mean_volume: (-?[\d.]+)").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        Check(Mean(tail.Stderr) < Mean(mid.Stderr) - 15, "Ringtone fades out at the end");
+    }
+    var capped = await DownloadRingtone(o => o.TrimEnabled = false);
+    if (capped.OutputFiles.FirstOrDefault(File.Exists) is { } ring40) {
+        Check(Math.Abs((await ProbeAudio(ring40)).Duration - 40) < 0.3, "Ringtone capped at 40 s when the whole song is downloaded");
+        Check(Path.GetFileName(ring40) == "source-video 2.m4r", "Existing ringtone kept; new one numbered: " + Path.GetFileName(ring40));
+    } else Check(false, "Uncut ringtone download: " + capped.Stage);
+
 } catch (Exception error) { failed++; Console.Error.WriteLine(error); }
 finally { try { Directory.Delete(work, true); } catch (IOException) { } }
 Console.WriteLine($"{passed} passed, {failed} failed");

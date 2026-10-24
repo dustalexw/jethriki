@@ -45,7 +45,7 @@ public sealed class DownloadOptions {
     [Setting("Format & quality", "Custom format sorting")]
     public string CustomSort { get; set; } = "";
 
-    [Setting("Audio", "Audio Format", Choices = "mp3=MP3|m4a=M4A (AAC)|aac=AAC|opus=Opus|vorbis=Ogg Vorbis|flac=FLAC|alac=ALAC|wav=WAV|best=Keep original codec")]
+    [Setting("Audio", "Audio Format", Choices = "mp3=MP3|m4a=M4A (AAC)|aac=AAC|opus=Opus|vorbis=Ogg Vorbis|flac=FLAC|alac=ALAC|wav=WAV|m4r=iPhone ringtone (M4R)|best=Keep original codec", Hint = "iPhone ringtone saves an .m4r file ready for iTunes, Apple Devices or Finder: AAC, at most 40 seconds, with a short fade in and out. Use Trim to choose which part of the song plays.")]
     public string AudioFormat { get; set; } = "mp3";
 
     [Setting("Audio", "Audio Quality", Choices = "q0=VBR best|q2=VBR high|q5=VBR medium|k320=320 kbps|k256=256 kbps|k192=192 kbps|k160=160 kbps|k128=128 kbps|k96=96 kbps|k64=64 kbps")]
@@ -249,6 +249,8 @@ public sealed class DownloadOptions {
     [Setting("Advanced", "Simultaneous downloads", Min = 1, Max = 8)]
     public int MaxConcurrent { get; set; } = 2;
 
+    /// The download is finished as an iPhone ringtone (.m4r).
+    public bool MakesRingtone => Mode == "audio" && AudioFormat == "m4r";
     public bool MusicTagsActive => EmbedMetadata && MusicTags && (Mode == "audio" || MusicTagsOnVideo);
     public bool RetagsChapters => MusicTagsActive && SplitChapters && TagChapterTracks && Mode == "audio";
     public bool ForcesKeyframes => (TrimEnabled && ForceKeyframes) || (Mode != "audio" && PreciseCuts && (SponsorBlockMode == "remove" || !string.IsNullOrWhiteSpace(RemoveChaptersRegex)));
