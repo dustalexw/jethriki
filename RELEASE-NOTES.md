@@ -1,7 +1,19 @@
-## Jethriki 2.4.2 — macOS
+## Jethriki 2.5.0 — Windows, macOS and Linux
 
-Sipass is now **Jethriki**. The new name appears in the app, window titles, menus, and About page. Existing settings and presets carry over.
+### New: iPhone ringtones
+Choose the **iPhone ringtone · M4R, 30 s** preset (or the **iPhone ringtone (M4R)** audio format) to save a ringtone that's ready to use:
 
-This release includes **macOS only**. Windows and Linux downloads remain available in the [Sipass 2.4.1 release](https://github.com/dustalexw/sipass/releases/tag/v2.4.1).
+- An AAC `.m4r` file at 256 kbps, 44.1 kHz stereo
+- Never longer than the 40 seconds iOS allows, even when Trim is off
+- A short fade in and a smooth 2-second fade out
+- The preset takes the first 30 seconds; use **Trim** to pick another part of the song
 
-Download **Jethriki-2.4.2-macOS.zip**, unzip it, and move **Jethriki.app** to Applications. The universal app supports Apple silicon and Intel Macs running macOS 13 or later. It is ad-hoc signed; on first launch, right-click the app and choose **Open**. Requires yt-dlp and FFmpeg: `brew install yt-dlp ffmpeg`.
+Drag the file onto your iPhone in Finder (or in Apple Devices / iTunes on Windows) and it appears under Settings › Sounds › Ringtone. If a ringtone with the same name already exists, the new one is saved alongside it instead of replacing it.
+
+### Windows and Linux are now Jethriki
+This is the first Windows and Linux release under the Jethriki name: the app is now **Jethriki.exe** / **Jethriki**. Settings and presets from Sipass carry over.
+
+### Downloads
+- **macOS:** unzip **Jethriki-2.5.0-macOS.zip** and move **Jethriki.app** to Applications. Universal app for Apple silicon and Intel Macs on macOS 13 or later. It is ad-hoc signed; on first launch, right-click the app and choose **Open**. Requires yt-dlp and FFmpeg: `brew install yt-dlp ffmpeg`.
+- **Windows:** extract the entire **Jethriki-2.5.0-Windows-x64.zip** and open **Jethriki.exe**. yt-dlp, FFmpeg and Deno are included.
+- **Linux:** extract **Jethriki-2.5.0-Linux-x64.tar.gz** and run `Jethriki/Jethriki`; run `./install.sh` inside the folder to add it to your applications menu. yt-dlp, FFmpeg (updated build of 9.0.2) and Deno are included.

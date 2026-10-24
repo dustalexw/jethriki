@@ -15,7 +15,7 @@ permissions:
   contents: read
 env:
   # Single source for the release version; both build scripts stamp it into the apps.
-  VERSION: '2.4.2'
+  VERSION: '2.5.0'
 jobs:
   windows:
     runs-on: windows-latest

@@ -1,8 +1,5 @@
 # Jethriki for Linux
 
-The currently published Linux package remains **Sipass 2.4.1**: extract it and run
-`Sipass/Sipass`. The Jethriki names below apply to builds from this source.
-
 A Linux desktop edition of Jethriki built with [Avalonia](https://avaloniaui.net). It shares the command, metadata, queue and tagging code in `Windows/Core` with the Windows edition, so both behave the same. The portable x64 archive includes the .NET runtime, yt-dlp (with its Python/EJS dependencies), FFmpeg, ffprobe and Deno. No Python, .NET, FFmpeg installation or PATH configuration is needed.
 
 ## Run
@@ -25,7 +22,7 @@ Copy command produces a POSIX shell command. **Replace original** moves the old 
 Install the .NET 10 SDK, then run:
 
 ```bash
-Linux/scripts/build.sh 2.4.1
+Linux/scripts/build.sh 2.5.0
 YTDLP_TEST_TOOLS="$PWD/Linux/dist/Jethriki/tools" dotnet run --project Windows/Tests/YtdlpStudio.Tests.csproj -c Release
 ```
 
