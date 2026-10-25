@@ -4,7 +4,7 @@
 # Publishes a self-contained app, then downloads the pinned yt-dlp, FFmpeg and Deno
 # releases from dependencies.lock.json, verifies their SHA-256 hashes, and bundles them.
 set -euo pipefail
-VERSION="${1:-${VERSION:-2.5.0}}"
+VERSION="${1:-${VERSION:-2.6.0}}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 repo="$(cd "$root/.." && pwd)"
 cache="$root/.cache"; dist="$root/dist"; package="$dist/Jethriki"
