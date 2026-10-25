@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType><TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
-    <AssemblyName>Jethriki</AssemblyName><RootNamespace>YtdlpStudio.Linux</RootNamespace><Version>2.8.1</Version>
+    <AssemblyName>Jethriki</AssemblyName><RootNamespace>YtdlpStudio.Linux</RootNamespace><Version>2.9.0</Version>
     <Company>Jethriki</Company><Product>Jethriki</Product>
     <Description>Linux video and audio downloader</Description>
     <ApplicationIcon>../../Windows/App/AppIcon.ico</ApplicationIcon>
