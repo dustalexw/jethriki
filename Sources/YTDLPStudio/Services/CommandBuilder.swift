@@ -255,12 +255,23 @@ enum CommandBuilder {
         let codec = o.audioFormat.isAndroidRingtone
             ? ["-c:a", "libvorbis"] + (kbps.map { ["-b:a", $0] } ?? ["-q:a", "6"])
             : ["-c:a", "aac", "-b:a", kbps ?? Ringtone.defaultBitrate]
-        let cap = o.audioFormat.ringtoneMaxSeconds ?? Ringtone.maxSeconds
-        // Fading the reversed clip in fades the real clip out, whatever length the cut ended up.
-        let chain = ["atrim=end=\(cap)", "asetpts=PTS-STARTPTS"] + audioFilters(o) + [
-            "afade=t=in:d=\(Ringtone.fadeInSeconds)",
-            "areverse", "afade=t=in:d=\(Ringtone.fadeOutSeconds)", "areverse"
-        ]
+        let chain: [String]
+        if o.toneKind == .notification {
+            // A notification sound must start instantly: drop leading silence, cap at 10 s, tiny click-free
+            // fade in, and a quick fade out at the real end.
+            chain = ["silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05",
+                     "atrim=end=\(Ringtone.notificationMaxSeconds)", "asetpts=PTS-STARTPTS"] + audioFilters(o) + [
+                "afade=t=in:d=0.02",
+                "areverse", "afade=t=in:d=0.4", "areverse"
+            ]
+        } else {
+            let cap = o.audioFormat.ringtoneMaxSeconds ?? Ringtone.maxSeconds
+            // Fading the reversed clip in fades the real clip out, whatever length the cut ended up.
+            chain = ["atrim=end=\(cap)", "asetpts=PTS-STARTPTS"] + audioFilters(o) + [
+                "afade=t=in:d=\(Ringtone.fadeInSeconds)",
+                "areverse", "afade=t=in:d=\(Ringtone.fadeOutSeconds)", "areverse"
+            ]
+        }
         return codec + ["-af", chain.joined(separator: ","),
                 "-ar", "\(o.sampleRate.value ?? 44100)", "-ac", "\(o.channels.value ?? 2)"]
     }

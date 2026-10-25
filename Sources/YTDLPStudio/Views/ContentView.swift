@@ -217,7 +217,7 @@ struct ContentView: View {
         switch o.mode {
         case .audio:
             text = o.audioFormat == .best ? "Original audio" :
-                "\(o.audioFormat.rawValue.uppercased())\(o.audioFormat.isLossless ? "" : " · " + o.audioQuality.label)"
+                "\(o.audioFormat.rawValue.uppercased())\(o.audioFormat.isLossless ? "" : " · " + o.audioQuality.label)\(o.makesNotificationSound ? " · notification" : "")"
         case .video, .videoOnly:
             var parts = [o.container.rawValue.uppercased(), o.maxResolution == .best ? "Best" : o.maxResolution.label]
             if o.encodeEnabled { parts.append("re-encode") }

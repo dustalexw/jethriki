@@ -118,6 +118,10 @@ struct AudioOptionsView: View {
                 EnumPicker(title: "Format", selection: $o.audioFormat)
                 EnumPicker(title: "Quality", selection: $o.audioQuality)
                     .disabled(o.audioFormat.isLossless)
+                if o.audioFormat.isRingtone || o.audioFormat.isAndroidRingtone {
+                    EnumPicker(title: "Tone type", selection: $o.toneKind)
+                    Hint("Notification sounds start instantly (leading silence removed), are at most \(Ringtone.notificationMaxSeconds) seconds and fade out quickly.")
+                }
                 if o.mode != .audio {
                     Hint("These apply in Audio Only mode. Switch modes at the top of the window.")
                 } else if o.audioFormat.isLossless {

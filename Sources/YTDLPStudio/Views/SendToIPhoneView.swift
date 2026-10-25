@@ -6,6 +6,8 @@ import CoreImage
 /// or through a Wi-Fi share the iPhone opens from a QR code (iOS 26 and later).
 struct SendToIPhoneView: View {
     let path: String
+    /// The tone is a notification / text sound, not a ringtone.
+    var notification: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var sync = IPhoneSync.shared
@@ -63,7 +65,8 @@ struct SendToIPhoneView: View {
             IconTile(symbol: "iphone", colors: [Theme.violet, Theme.pink], size: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(toneName).font(.headline).lineLimit(1).truncationMode(.middle)
-                Text(seconds.map { String(format: "Ringtone · %.0f seconds", $0) } ?? "Ringtone")
+                Text(seconds.map { String(format: "\(notification ? "Text tone" : "Ringtone") · %.0f seconds", $0) }
+                     ?? (notification ? "Text tone" : "Ringtone"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -100,7 +103,9 @@ struct SendToIPhoneView: View {
                 }
             }
             if let addedName {
-                Hint("Added “\(addedName)”. It appears in Settings › Sounds after the iPhone restarts.",
+                Hint(notification
+                     ? "Added “\(addedName)”. After the iPhone restarts, pick it in Settings › Sounds & Haptics › Text Tone."
+                     : "Added “\(addedName)”. It appears in Settings › Sounds after the iPhone restarts.",
                      systemImage: "checkmark.circle.fill", tint: .green)
                 HStack(spacing: 10) {
                     Button("Restart iPhone") { confirmRestart = true }

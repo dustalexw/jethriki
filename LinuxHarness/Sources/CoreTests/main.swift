@@ -296,7 +296,7 @@ do {
     if [ "$1" = "-s" ]; then shift 2; fi
     case "$1" in
       devices) printf 'List of devices attached\nR58M123ABC device usb:1-1 model:Pixel_7 transport_id:1\n\n' ;;
-      push) mkdir -p "$PHONE"; cp "$2" "$PHONE/$(basename "$3")"; echo "1 file pushed" ;;
+      push) mkdir -p "$PHONE"; echo "$3" >> "$PHONE/push.log"; cp "$2" "$PHONE/$(basename "$3")"; echo "1 file pushed" ;;
       shell)
         echo "$2" >> "$PHONE/shell.log"
         case "$2" in
@@ -318,9 +318,33 @@ do {
         check((try? sent.get()) == "tone" && FileManager.default.contents(atPath: phone + "/tone.ogg") == oggData, "sendRingtone copies the tone to the phone", "\(sent)")
         let settings = (try? String(contentsOfFile: phone + "/settings.log", encoding: .utf8)) ?? ""
         check(settings.contains("settings put system ringtone content://media/external/audio/media/42"), "sendRingtone sets the ringtone from the media id", settings)
+        let note = blocking { try await AndroidSync.sendRingtone(path: ogg, to: target, setAsRingtone: true, notification: true) }
+        let pushed = (try? String(contentsOfFile: phone + "/push.log", encoding: .utf8)) ?? ""
+        let shellLog = (try? String(contentsOfFile: phone + "/shell.log", encoding: .utf8)) ?? ""
+        let settings2 = (try? String(contentsOfFile: phone + "/settings.log", encoding: .utf8)) ?? ""
+        check((try? note.get()) == "tone" && pushed.contains("/sdcard/Notifications/tone.ogg")
+              && shellLog.contains("/storage/emulated/0/Notifications/tone.ogg") && shellLog.contains("is_notification:i:1"),
+              "notification send lands in the Notifications folder", pushed + shellLog)
+        check(settings2.contains("settings put system notification_sound content://media/external/audio/media/42"),
+              "notification send records notification_sound", settings2)
         let bad = AndroidTarget(serial: "X", model: "", wifi: false, state: "unauthorized")
         let denied = blocking { try await AndroidSync.sendRingtone(path: ogg, to: bad, setAsRingtone: false) }
         check({ if case .failure(let e) = denied { return e.localizedDescription.contains("tap Allow") }; return false }(), "unauthorized phone gets the Allow hint")
+    }
+    func presetArgs(_ name: String) -> String {
+        guard let p = OptionsStore.builtInPresets.first(where: { $0.name == name }) else { return "" }
+        return CommandBuilder.ringtoneArgs(p.options).joined(separator: " ")
+    }
+    for name in ["iPhone text tone · M4R", "Android notification sound · OGG"] {
+        let a = presetArgs(name)
+        let p = OptionsStore.builtInPresets.first { $0.name == name }?.options
+        check(a.contains("silenceremove") && a.contains("atrim=end=10") && a.contains("afade=t=in:d=0.4")
+              && p?.toneKind == .notification && p?.makesNotificationSound == true && p?.trimEnd == "00:00:05" && p?.normalizeAudio == true,
+              "\(name) preset builds a notification chain", a)
+    }
+    for name in ["iPhone ringtone · M4R", "Android ringtone · OGG"] {
+        let a = presetArgs(name)
+        check(!a.isEmpty && !a.contains("silenceremove") && a.contains("afade=t=in:d=2.0"), "\(name) keeps the ringtone chain", a)
     }
     let refused = blocking { try await AndroidSync.connect(hostPort: "10.0.0.9:5555") }
     check({ if case .failure = refused { return true }; return false }(), "connect reports 'failed to connect' even with exit 0")
@@ -566,6 +590,8 @@ do {
     check(loaded?.container == .mkv && loaded?.audioFormat == .flac, "old values kept (MKV, FLAC)")
     check(loaded?.musicTags == true && loaded?.squareCover == true, "new music options get their defaults")
     check(loaded?.mode == .video, "an unreadable old value falls back to its default instead of wiping everything")
+    var noTone = saved; noTone.removeValue(forKey: "toneKind")
+    check(OptionsStore.mergedWithDefaults(noTone)?.toneKind == .ringtone, "settings saved without toneKind load as ringtone")
 }
 
 

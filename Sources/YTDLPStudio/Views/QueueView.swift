@@ -132,10 +132,10 @@ struct JobRow: View {
             LogView(job: job)
         }
         .sheet(isPresented: Binding(get: { sendPath != nil }, set: { if !$0 { sendPath = nil } })) {
-            if let sendPath { SendToIPhoneView(path: sendPath) }
+            if let sendPath { SendToIPhoneView(path: sendPath, notification: job.options.makesNotificationSound) }
         }
         .sheet(isPresented: Binding(get: { sendAndroidPath != nil }, set: { if !$0 { sendAndroidPath = nil } })) {
-            if let sendAndroidPath { SendToAndroidView(path: sendAndroidPath) }
+            if let sendAndroidPath { SendToAndroidView(path: sendAndroidPath, notification: job.options.makesNotificationSound) }
         }
         .contextMenu {
             Button("Copy link") {
