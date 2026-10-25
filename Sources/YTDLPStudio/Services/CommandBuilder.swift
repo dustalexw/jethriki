@@ -251,10 +251,23 @@ enum CommandBuilder {
     /// 44.1 kHz stereo unless the user picked otherwise. The user's volume/loudness filters still apply.
     static func ringtoneArgs(_ o: DownloadOptions) -> [String] {
         let kbps = o.audioQuality.arg.hasSuffix("K") ? o.audioQuality.arg.lowercased() : nil
-        // Android tones are Ogg Vorbis; VBR quality 6 is about 192 kbps.
-        let codec = o.audioFormat.isAndroidRingtone
-            ? ["-c:a", "libvorbis"] + (kbps.map { ["-b:a", $0] } ?? ["-q:a", "6"])
-            : ["-c:a", "aac", "-b:a", kbps ?? Ringtone.defaultBitrate]
+        var rate = o.sampleRate.value ?? 44100
+        let codec: [String]
+        switch o.audioFormat.isAndroidRingtone ? androidEncoder : nil {
+        case "libvorbis"?:
+            // Android tones are Ogg Vorbis; VBR quality 6 is about 192 kbps.
+            codec = ["-c:a", "libvorbis"] + (kbps.map { ["-b:a", $0] } ?? ["-q:a", "6"])
+        case "libopus"?:
+            // Homebrew's FFmpeg has no libvorbis. Opus in Ogg plays as a tone on Android 5 and later;
+            // it only runs at 48 kHz (or lower fixed rates).
+            codec = ["-c:a", "libopus", "-b:a", kbps ?? "160k"]
+            rate = 48000
+        case let other?:
+            // FFmpeg's own Vorbis encoder: always present, marked experimental.
+            codec = ["-c:a", other, "-strict", "experimental"] + (kbps.map { ["-b:a", $0] } ?? ["-q:a", "6"])
+        case nil:
+            codec = ["-c:a", "aac", "-b:a", kbps ?? Ringtone.defaultBitrate]
+        }
         let chain: [String]
         if o.toneKind == .notification {
             // A notification sound must start instantly: drop leading silence, cap at 10 s, tiny click-free
@@ -273,7 +286,24 @@ enum CommandBuilder {
             ]
         }
         return codec + ["-af", chain.joined(separator: ","),
-                "-ar", "\(o.sampleRate.value ?? 44100)", "-ac", "\(o.channels.value ?? 2)"]
+                "-ar", "\(rate)", "-ac", "\(o.channels.value ?? 2)"]
+    }
+
+    /// Audio encoders the installed FFmpeg offers (from `ffmpeg -encoders`); nil until known.
+    static var ffmpegEncoders: Set<String>?
+    /// The encoder for Android ringtones: libvorbis when FFmpeg has it (or before we know), else libopus,
+    /// else FFmpeg's built-in Vorbis encoder.
+    static var androidEncoder: String {
+        guard let e = ffmpegEncoders, !e.contains("libvorbis") else { return "libvorbis" }
+        return e.contains("libopus") ? "libopus" : "vorbis"
+    }
+    /// Parses the encoder names out of `ffmpeg -hide_banner -encoders`.
+    static func parseEncoders(_ output: String) -> Set<String> {
+        Set(output.split(separator: "\n").compactMap { line -> String? in
+            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard parts.count >= 2, parts[0].count == 6, parts[0] != "------" else { return nil }
+            return String(parts[1])
+        })
     }
 
     static func audioFilterArgs(_ o: DownloadOptions) -> [String] {

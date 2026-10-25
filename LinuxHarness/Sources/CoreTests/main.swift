@@ -220,6 +220,21 @@ do {
     check((g as NSString).lastPathComponent == "song 2.m4r" && FileManager.default.fileExists(atPath: f),
           "an existing ringtone is kept and the new one numbered", (g as NSString).lastPathComponent)
 
+    section("Android tones with an FFmpeg that lacks libvorbis (Homebrew)")
+    do {
+        let listing = " A....D aac                  AAC (Advanced Audio Coding)\n A....D libopus              libopus Opus\n A....D vorbis               Vorbis\n"
+        let android = OptionsStore.builtInPresets.first { $0.options.audioFormat == .android }!.options
+        let saved = CommandBuilder.ffmpegEncoders
+        CommandBuilder.ffmpegEncoders = CommandBuilder.parseEncoders(listing)
+        let opusArgs = CommandBuilder.ringtoneArgs(android)
+        CommandBuilder.ffmpegEncoders = ["aac", "vorbis"]
+        let nativeArgs = CommandBuilder.ringtoneArgs(android)
+        CommandBuilder.ffmpegEncoders = saved
+        check(opusArgs.starts(with: ["-c:a", "libopus"]) && opusArgs.contains("48000"), "falls back to Opus at 48 kHz", "\(opusArgs)")
+        check(nativeArgs.starts(with: ["-c:a", "vorbis", "-strict", "experimental"]), "falls back to FFmpeg's own Vorbis encoder", "\(nativeArgs)")
+        check(CommandBuilder.ringtoneArgs(android).starts(with: ["-c:a", "libvorbis"]), "uses libvorbis while the encoder list is unknown")
+    }
+
     section("Ringtone transfer: tone list and Wi-Fi share")
     let tone = FileManager.default.contents(atPath: f) ?? Data()
     check(abs((MP4.durationSeconds(tone) ?? 0) - 29) < 0.1, "length read from the MP4 header (\(MP4.durationSeconds(tone) ?? -1) s)")

@@ -38,14 +38,22 @@ enum Ogg {
         let magic: [UInt8] = [0x4F, 0x67, 0x67, 0x53]   // "OggS"
         guard b.count > 64, Array(b[0..<4]) == magic else { return nil }
         let payload = 27 + Int(b[26])
-        guard payload + 16 <= b.count, b[payload] == 0x01, Array(b[(payload + 1)..<(payload + 7)]) == Array("vorbis".utf8) else { return nil }
-        let rate = (0..<4).reduce(UInt32(0)) { $0 | (UInt32(b[payload + 12 + $1]) << (8 * UInt32($1))) }
+        guard payload + 19 <= b.count else { return nil }
+        let rate: UInt32, preSkip: UInt64
+        if b[payload] == 0x01, Array(b[(payload + 1)..<(payload + 7)]) == Array("vorbis".utf8) {
+            rate = (0..<4).reduce(UInt32(0)) { $0 | (UInt32(b[payload + 12 + $1]) << (8 * UInt32($1))) }
+            preSkip = 0
+        } else if Array(b[payload..<(payload + 8)]) == Array("OpusHead".utf8) {
+            // Opus granule positions always count 48 kHz samples, including the encoder's pre-skip.
+            rate = 48000
+            preSkip = UInt64(b[payload + 10]) | (UInt64(b[payload + 11]) << 8)
+        } else { return nil }
         guard rate > 0 else { return nil }
         var at = b.count - 27
         while at > 0 {
             if b[at] == magic[0], b[at + 1] == magic[1], b[at + 2] == magic[2], b[at + 3] == magic[3] {
                 let granule = (0..<8).reduce(UInt64(0)) { $0 | (UInt64(b[at + 6 + $1]) << (8 * UInt64($1))) }
-                return granule == UInt64.max ? nil : Double(granule) / Double(rate)
+                return granule == UInt64.max || granule < preSkip ? nil : Double(granule - preSkip) / Double(rate)
             }
             at -= 1
         }

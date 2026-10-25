@@ -291,6 +291,9 @@ try {
         }
         Check(Math.Abs((Ogg.DurationSeconds(File.ReadAllBytes(androidTone)) ?? 0) - 30) < 0.3, "Android ringtone length read from the Ogg pages");
         Check(Ogg.DurationSeconds([1, 2, 3]) == null, "Ogg reader rejects other files");
+        var opusTone = Path.Combine(work, "opus-tone.ogg");
+        await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=5", "-c:a", "libopus", "-b:a", "128k", opusTone]);
+        Check(File.Exists(opusTone) && Math.Abs((Ogg.DurationSeconds(File.ReadAllBytes(opusTone)) ?? 0) - 5) < 0.05, "Opus .ogg length read too (Mac FFmpeg without libvorbis)");
         if (RingtoneShare.LocalAddress() != null) {
             using var androidShare = RingtoneShare.Start(androidTone); using var androidHttp = new HttpClient();
             string androidName = Path.GetFileName(androidTone);
