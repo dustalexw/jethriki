@@ -129,6 +129,13 @@ iOS only lists directly installed tones after a restart, so the dialog offers a 
 44.1 kHz stereo, about 192 kbps, up to 60 seconds, with a short fade in and out. The preset takes
 the first 30 seconds; use Trim to pick another part. Copy the `.ogg` into the phone's `Ringtones`
 folder over USB (or download it on the phone), then pick it in Settings › Sound › Phone ringtone.
+Or send it straight from Jethriki with **Send to Android**:
+
+- **USB** — with Developer options › USB debugging on, copies the tone into the phone's Ringtones folder
+  and can set it as the phone ringtone. Needs Google's adb (`winget install Google.PlatformTools`,
+  `brew install android-platform-tools` or `sudo apt install adb`); Jethriki finds it but doesn't bundle it.
+- **Wi-Fi** — the same, over Developer options › Wireless debugging after pairing once with a code.
+- **Wi-Fi share** — no setup: scan the QR code, download the tone, then pick it in Settings › Sound.
 
 **Trim** — download only a time range, with optional frame-accurate cuts.
 

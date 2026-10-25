@@ -74,6 +74,7 @@ struct JobRow: View {
     @EnvironmentObject private var downloads: DownloadManager
     @State private var showLog = false
     @State private var sendPath: String?
+    @State private var sendAndroidPath: String?
 
     /// The finished ringtone file, if this job made one that still exists.
     private var ringtoneFile: String? {
@@ -83,6 +84,17 @@ struct JobRow: View {
         }
         return job.outputFiles.first {
             URL(fileURLWithPath: $0).pathExtension.lowercased() == Ringtone.fileExtension && FileManager.default.fileExists(atPath: $0)
+        }
+    }
+
+    /// The finished Android ringtone (.ogg), if this job made one that still exists.
+    private var androidFile: String? {
+        switch job.status {
+        case .finished, .warning: break
+        default: return nil
+        }
+        return job.outputFiles.first {
+            URL(fileURLWithPath: $0).pathExtension.lowercased() == "ogg" && FileManager.default.fileExists(atPath: $0)
         }
     }
 
@@ -122,6 +134,9 @@ struct JobRow: View {
         .sheet(isPresented: Binding(get: { sendPath != nil }, set: { if !$0 { sendPath = nil } })) {
             if let sendPath { SendToIPhoneView(path: sendPath) }
         }
+        .sheet(isPresented: Binding(get: { sendAndroidPath != nil }, set: { if !$0 { sendAndroidPath = nil } })) {
+            if let sendAndroidPath { SendToAndroidView(path: sendAndroidPath) }
+        }
         .contextMenu {
             Button("Copy link") {
                 NSPasteboard.general.clearContents()
@@ -130,6 +145,7 @@ struct JobRow: View {
             Button("Show log") { showLog = true }
             if !job.outputFiles.isEmpty { Button("Show in Finder") { downloads.reveal(job) } }
             if let file = ringtoneFile { Button("Send to iPhone…") { sendPath = file } }
+            if let file = androidFile { Button("Send to Android…") { sendAndroidPath = file } }
             Divider()
             if job.status.isActive || job.status == .queued { Button("Cancel") { downloads.cancel(job) } }
             if job.status.isDone { Button("Retry") { downloads.retry(job) } }
@@ -188,6 +204,10 @@ struct JobRow: View {
                 if let file = ringtoneFile {
                     Button { sendPath = file } label: { Image(systemName: "iphone") }
                         .help("Send to iPhone")
+                }
+                if let file = androidFile {
+                    Button { sendAndroidPath = file } label: { Image(systemName: "candybarphone") }
+                        .help("Send to Android")
                 }
                 Button { downloads.retry(job) } label: { Image(systemName: "arrow.clockwise") }
                     .help("Retry")
