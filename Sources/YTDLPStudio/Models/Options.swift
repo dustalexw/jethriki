@@ -190,8 +190,8 @@ enum Ringtone {
     static let fileExtension = "m4r"
     /// iOS rejects ringtones longer than 40 seconds; the app enforces this whatever the trim settings.
     static let maxSeconds = 40
-    /// Seconds a preset ringtone clip lasts by default.
-    static let defaultSeconds = 30
+    /// Seconds a preset ringtone clip lasts by default: under the 30 seconds iOS 26 allows for Use as Ringtone.
+    static let defaultSeconds = 29
     static let fadeInSeconds = 0.3
     static let fadeOutSeconds = 2.0
     /// Bitrate used when a VBR quality is chosen, since Apple's own ringtones are constant-bitrate AAC.

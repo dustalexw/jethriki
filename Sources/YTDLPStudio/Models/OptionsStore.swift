@@ -131,13 +131,13 @@ final class OptionsStore: ObservableObject {
                 o.channels = .mono
                 o.normalizeAudio = true
             },
-            make("iPhone ringtone · M4R, 30 s") { o in
+            make("iPhone ringtone · M4R") { o in
                 o.mode = .audio
                 o.audioFormat = .m4r
                 o.audioQuality = .k256
                 o.sampleRate = .r44100
                 o.channels = .stereo
-                // Only the first 30 s are downloaded; change Trim to pick another part of the song.
+                // Only the first 29 s are downloaded; change Trim to pick another part of the song.
                 o.trimEnabled = true
                 o.trimStart = "00:00:00"
                 o.trimEnd = "00:00:\(Ringtone.defaultSeconds)"

@@ -211,14 +211,47 @@ do {
           && !FileManager.default.fileExists(atPath: (f as NSString).deletingPathExtension + ".m4a"),
           "saved as .m4r, no .m4a left behind", "\(j.status.label) \(j.outputFiles)")
     let p = probe(f)
-    check(p.acodec == "aac" && p.sampleRate == 44100 && p.channels == 2 && abs((p.duration ?? 0) - 30) < 0.3,
-          "30 s AAC 44.1 kHz stereo (\(p.acodec ?? "-"), \(p.duration ?? -1) s)")
+    check(p.acodec == "aac" && p.sampleRate == 44100 && p.channels == 2 && abs((p.duration ?? 0) - 29) < 0.3,
+          "29 s AAC 44.1 kHz stereo (\(p.acodec ?? "-"), \(p.duration ?? -1) s)")
     check(meanVolume(f, ["-sseof", "-0.1"]) < meanVolume(f, ["-ss", "15", "-t", "1"]) - 15, "fades out at the end")
     let whole = run("ringtone", source: song, base: preset) { $0.trimEnabled = false }
     let g = whole.outputFiles.first ?? ""
     check(abs((probe(g).duration ?? 0) - 40) < 0.3, "whole song is capped at 40 s (\(probe(g).duration ?? -1) s)")
     check((g as NSString).lastPathComponent == "song 2.m4r" && FileManager.default.fileExists(atPath: f),
           "an existing ringtone is kept and the new one numbered", (g as NSString).lastPathComponent)
+
+    section("Ringtone transfer: tone list and Wi-Fi share")
+    let tone = FileManager.default.contents(atPath: f) ?? Data()
+    check(abs((MP4.durationSeconds(tone) ?? 0) - 29) < 0.1, "length read from the MP4 header (\(MP4.durationSeconds(tone) ?? -1) s)")
+    let old = try! PropertyListSerialization.data(fromPropertyList: ["Ringtones": ["WXYZ.m4r": ["Name": "Old Tone", "Total Time": 12345]]], format: .binary, options: 0)
+    let first = try! RingtoneList.add(to: old, name: "song", milliseconds: 29013)
+    let second = try! RingtoneList.add(to: first.plist, name: "song", milliseconds: 29013)
+    let parsed = (try? PropertyListSerialization.propertyList(from: second.plist, format: nil)) as? [String: Any]
+    let entry = (parsed?["Ringtones"] as? [String: Any])?[first.fileName] as? [String: Any]
+    check(first.fileName.count == 8 && first.fileName.hasSuffix(".m4r") && second.fileName == first.fileName
+          && RingtoneList.names(in: second.plist) == ["Old Tone", "song"] && entry?["Total Time"] as? Int == 29013,
+          "tone list keeps existing tones and replaces a tone with the same name", "\(RingtoneList.names(in: second.plist))")
+    if let share = try? RingtoneShare(path: f) {
+        func curl(_ args: [String]) -> ProcessResult { runSync("/usr/bin/env", ["curl", "-s"] + args) }
+        let page = curl([share.url.absoluteString]).stdout
+        check(!share.url.absoluteString.contains("127.0.0.1") && page.contains("Use as Ringtone") && page.contains("song.m4a") && !share.tooLongForShare,
+              "share page on the local network: \(share.url.absoluteString)")
+        let out = outRoot + "/shared.m4a"
+        _ = curl(["-o", out, share.url.absoluteString + "song.m4a"])
+        check(FileManager.default.contents(atPath: out) == tone, "share serves the tone byte for byte")
+        check(curl(["-r", "10-19", share.url.absoluteString + "song.m4a"]).stdout.utf8.count <= 10
+              && curl(["-o", "/dev/null", "-w", "%{http_code}", "-r", "10-19", share.url.absoluteString + "song.m4a"]).stdout == "206", "share answers range requests")
+        let guess = share.url.deletingLastPathComponent().absoluteString + "0000/"
+        check(curl(["-o", "/dev/null", "-w", "%{http_code}", guess]).stdout == "404", "share hides everything but its own random address")
+        _ = waitUntil(2) { share.downloads >= 1 }
+        check(share.downloads == 1, "share counts finished downloads (\(share.downloads))")
+        share.stop()
+        check(curl(["-m", "3", "-o", "/dev/null", "-w", "%{http_code}", share.url.absoluteString]).stdout == "000", "share stops serving when closed")
+        if let long = try? RingtoneShare(path: g) {
+            check(long.tooLongForShare && curl([long.url.absoluteString]).stdout.contains("under 30 seconds"), "share warns when a tone is too long for iOS 26")
+            long.stop()
+        }
+    } else { check(false, "share starts on the local network") }
 }
 
 section("E2E: FFmpeg re-encode pass, every software encoder, downscale + loudnorm")

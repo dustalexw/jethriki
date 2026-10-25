@@ -7,8 +7,8 @@ public static class Ringtone {
     public const string Extension = ".m4r";
     /// iOS rejects ringtones longer than 40 seconds; enforced whatever the trim settings are.
     public const int MaxSeconds = 40;
-    /// Seconds a preset ringtone clip lasts by default.
-    public const int DefaultSeconds = 30;
+    /// Seconds a preset ringtone clip lasts by default: under the 30 seconds iOS 26 allows for Use as Ringtone.
+    public const int DefaultSeconds = 29;
     public const double FadeInSeconds = 0.3, FadeOutSeconds = 2.0;
     /// Bitrate used when a VBR quality is chosen, since Apple's own ringtones are constant-bitrate AAC.
     public const string DefaultBitrate = "256k";

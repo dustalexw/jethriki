@@ -6,6 +6,14 @@ using YtdlpStudio.Core;
 
 // Fixture-tool mode replaces only online extraction; media processing always uses real bundled tools.
 if (args.Contains("--sleep-child")) { await Task.Delay(TimeSpan.FromSeconds(30)); return 0; }
+if (args.Contains("--fake-iphone")) {
+    // Runs the simulated iPhone alone, so other clients can be checked against it. Stops when stdin closes.
+    using var phone = new FakeIPhone { AlsoOnWifi = args.Contains("--wifi") };
+    Console.WriteLine(phone.Address); Console.Out.Flush();
+    await Console.In.ReadToEndAsync();
+    Console.Error.WriteLine("restarted=" + phone.Restarted + " files=" + string.Join(",", phone.Files.Keys.Order()));
+    return 0;
+}
 if (args.Contains("--ignore-config") && Environment.GetEnvironmentVariable("YTDLP_FIXTURE_METADATA") is { } fixturePath) {
     if (Environment.GetEnvironmentVariable("YTDLP_FIXTURE_SLOW") == "1") {
         var childStart = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false }; childStart.ArgumentList.Add("--sleep-child");
@@ -130,7 +138,7 @@ try {
     // iPhone ringtone preset: AAC .m4r, 30 s by default, never longer than 40 s, faded out.
     var ringtonePreset = SettingsStore.BuiltIn.Single(p => p.Options.MakesRingtone);
     var ringtoneCommand = CommandBuilder.Arguments(ringtonePreset.Options, ["URL"]);
-    Check(ringtoneCommand[ringtoneCommand.IndexOf("--audio-format") + 1] == "m4a" && ringtoneCommand.Contains("*00:00:00-00:00:30")
+    Check(ringtoneCommand[ringtoneCommand.IndexOf("--audio-format") + 1] == "m4a" && ringtoneCommand.Contains("*00:00:00-00:00:29")
         && ringtoneCommand.Any(a => a.StartsWith("ExtractAudio+ffmpeg_o:-c:a aac -b:a 256k -af atrim=end=40,")), "Ringtone preset command");
     var longVideo = Path.Combine(work, "long-song.mp4");
     var longResult = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=10:duration=50", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=50", "-c:v", "libx264", "-c:a", "aac", "-shortest", longVideo]);
@@ -153,7 +161,7 @@ try {
         && !File.Exists(Path.ChangeExtension(preset30.OutputFiles[0], ".m4a")), "Ringtone saved as .m4r: " + string.Join(", ", preset30.OutputFiles));
     if (preset30.OutputFiles.FirstOrDefault(File.Exists) is { } ring30) {
         var p = await ProbeAudio(ring30);
-        Check(p.Codec == "aac" && p.Rate == 44100 && p.Channels == 2 && p.Brand.Contains("m4a") && Math.Abs(p.Duration - 30) < 0.3, $"Ringtone is 30 s AAC 44.1 kHz stereo MPEG-4 ({p.Codec}, {p.Duration} s)");
+        Check(p.Codec == "aac" && p.Rate == 44100 && p.Channels == 2 && p.Brand.Contains("m4a") && Math.Abs(p.Duration - 29) < 0.3, $"Ringtone is 29 s AAC 44.1 kHz stereo MPEG-4 ({p.Codec}, {p.Duration} s)");
         var tail = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "info", "-sseof", "-0.1", "-i", ring30, "-af", "volumedetect", "-f", "null", "-"]);
         var mid = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "info", "-ss", "15", "-t", "1", "-i", ring30, "-af", "volumedetect", "-f", "null", "-"]);
         double Mean(string log) => double.Parse(System.Text.RegularExpressions.Regex.Match(log, @"mean_volume: (-?[\d.]+)").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -164,6 +172,63 @@ try {
         Check(Math.Abs((await ProbeAudio(ring40)).Duration - 40) < 0.3, "Ringtone capped at 40 s when the whole song is downloaded");
         Check(Path.GetFileName(ring40) == "source-video 2.m4r", "Existing ringtone kept; new one numbered: " + Path.GetFileName(ring40));
     } else Check(false, "Uncut ringtone download: " + capped.Stage);
+
+    // Sending to an iPhone over USB and Wi-Fi, against a simulated phone that speaks the real protocols.
+    var oldTones = Convert.FromBase64String("YnBsaXN0MDDRAQJZUmluZ3RvbmVz0QMEWFdYWVoubTRy2AUGBwgJCgsMDQ0ODQ8QERJVQWxidW1WQXJ0aXN0VEdVSURVR2VucmVUTmFtZVNQSURfEBFQcm90ZWN0ZWQgQ29udGVudFpUb3RhbCBUaW1lUF8QEDAxMjM0NTY3ODlBQkNERUZYT2xkIFRvbmUTwAAAAAAAAAAIETA5CAsVGCEyOD9ESk9TZ3Jzho+YmQAAAAAAAAEBAAAAAAAAABMAAAAAAAAAAAAAAAAAAACc");
+    var oldEntry = (Dictionary<string, object>)((Dictionary<string, object>)Plist.ParseDict(oldTones)["Ringtones"])["WXYZ.m4r"];
+    Check((string)oldEntry["Name"] == "Old Tone" && (long)oldEntry["Total Time"] == 12345 && (long)oldEntry["PID"] == -4611686018427387904L && oldEntry["Protected Content"] is false, "Binary property lists are read");
+    var roundTrip = Plist.ParseDict(Plist.ToXml(new Dictionary<string, object> { ["a"] = "x & <y>", ["n"] = -5L, ["d"] = new byte[] { 1, 2, 3 }, ["l"] = new List<object> { true, 1.5 } }));
+    Check((string)roundTrip["a"] == "x & <y>" && (long)roundTrip["n"] == -5 && ((byte[])roundTrip["d"]).SequenceEqual(new byte[] { 1, 2, 3 }) && ((List<object>)roundTrip["l"]).SequenceEqual(new object[] { true, 1.5 }), "XML property lists round-trip");
+    if (preset30.OutputFiles.FirstOrDefault(File.Exists) is { } tone) {
+        Check(Math.Abs((Mp4.DurationSeconds(File.ReadAllBytes(tone)) ?? 0) - 29) < 0.1, "Ringtone length read from the MP4 header");
+        using var phone = new FakeIPhone { AlsoOnWifi = true };
+        phone.Files[IPhone.ListPath] = oldTones; phone.Folders["/iTunes_Control"] = true; phone.Folders[IPhone.ListFolder] = true;
+        Environment.SetEnvironmentVariable("USBMUXD_SOCKET_ADDRESS", phone.Address);
+        var devices = await IPhone.ListAsync();
+        Check(devices.Count == 1 && devices[0].Name == FakeIPhone.DeviceName && devices[0].IosVersion == FakeIPhone.Version && !devices[0].Wifi, "Finds the iPhone once, preferring USB over Wi-Fi: " + string.Join(", ", devices));
+        var installed = await IPhone.InstallRingtoneAsync(devices[0], tone);
+        var list = (Dictionary<string, object>)Plist.ParseDict(phone.Files[IPhone.ListPath])["Ringtones"];
+        var added = list.FirstOrDefault(t => ((Dictionary<string, object>)t.Value)["Name"] as string == installed);
+        Check(installed == "source-video" && list.ContainsKey("WXYZ.m4r") && added.Key is { Length: 8 } && added.Key.EndsWith(".m4r"), "Ringtone listed next to the phone's existing tones: " + string.Join(", ", list.Keys));
+        Check(added.Key != null && phone.Files.TryGetValue(IPhone.TonesFolder + "/" + added.Key, out var copied) && copied.SequenceEqual(File.ReadAllBytes(tone)), "Ringtone file copied byte for byte over AFC");
+        Check(added.Value is Dictionary<string, object> entry && Math.Abs((long)entry["Total Time"] - 29000) < 100 && entry["Protected Content"] is false, "Ringtone entry has its length in milliseconds");
+        await IPhone.InstallRingtoneAsync(devices[0], tone);
+        Check(((Dictionary<string, object>)Plist.ParseDict(phone.Files[IPhone.ListPath])["Ringtones"]).Count == 2, "Sending the same tone again replaces it instead of duplicating it");
+        Check((await IPhone.ListRingtonesAsync(devices[0])).SequenceEqual(new[] { "Old Tone", "source-video" }), "Lists the tones on the phone");
+        await IPhone.RestartAsync(devices[0]); Check(phone.Restarted, "Restart request reaches the phone");
+        var wifiOnly = new IPhoneDevice(2, FakeIPhone.Udid, true, FakeIPhone.DeviceName, FakeIPhone.Version);
+        Check(await IPhone.InstallRingtoneAsync(wifiOnly, tone, "Over the air") == "Over the air" && (await IPhone.ListRingtonesAsync(wifiOnly)).Contains("Over the air"), "Installs over Wi-Fi sync too");
+        using var fresh = new FakeIPhone(); Environment.SetEnvironmentVariable("USBMUXD_SOCKET_ADDRESS", fresh.Address);
+        await IPhone.InstallRingtoneAsync((await IPhone.ListAsync())[0], tone);
+        Check(fresh.Files.Keys.Count(k => k.StartsWith(IPhone.TonesFolder + "/")) == 1 && fresh.Files.ContainsKey(IPhone.ListPath), "Works on a phone that never had custom tones");
+        fresh.Trusted = false;
+        try { await IPhone.InstallRingtoneAsync((await IPhone.ListAsync())[0], tone); Check(false, "Untrusted computer is refused"); }
+        catch (IPhoneException error) { Check(error.Message.Contains("Trust"), "Untrusted computer gets a Trust hint: " + error.Message); }
+        try { await IPhone.InstallRingtoneAsync(devices[0], longVideo); Check(false, "Non-ringtone file is refused"); }
+        catch (IPhoneException error) { Check(error.Message.Contains("40 seconds") || error.Message.Contains("not an AAC"), "Over-long or non-ringtone files are refused: " + error.Message); }
+        Environment.SetEnvironmentVariable("USBMUXD_SOCKET_ADDRESS", "127.0.0.1:1");
+        try { await IPhone.ListAsync(); Check(false, "Missing Apple driver reported"); }
+        catch (IPhoneException error) { Check(error.Message.Length > 20, "Missing Apple driver reported: " + error.Message); }
+        Environment.SetEnvironmentVariable("USBMUXD_SOCKET_ADDRESS", null);
+
+        // Wi-Fi share for iOS 26: a page and the tone, served on the local network behind a QR code.
+        if (RingtoneShare.LocalAddress() != null) {
+            using var share = RingtoneShare.Start(tone); using var http = new HttpClient();
+            Check(share.Url.StartsWith("http://") && !share.Url.Contains("127.0.0.1") && !share.TooLongForShare, "Share address is on the local network: " + share.Url);
+            var page = await http.GetStringAsync(share.Url);
+            Check(page.Contains("Use as Ringtone") && page.Contains("source-video.m4a") && page.Contains("29 seconds"), "Share page explains Use as Ringtone");
+            var downloaded = await http.GetByteArrayAsync(share.Url + "source-video.m4a");
+            Check(downloaded.SequenceEqual(File.ReadAllBytes(tone)) && share.Downloads == 1, "Share serves the tone as .m4a");
+            using var ranged = new HttpRequestMessage(HttpMethod.Get, share.Url + "source-video.m4a"); ranged.Headers.Range = new(10, 19);
+            using var partial = await http.SendAsync(ranged);
+            Check((int)partial.StatusCode == 206 && (await partial.Content.ReadAsByteArrayAsync()).SequenceEqual(downloaded[10..20]), "Share answers range requests");
+            var guessed = share.Url[..share.Url.TrimEnd('/').LastIndexOf('/')] + "/0000/";
+            Check((int)(await http.GetAsync(guessed)).StatusCode == 404, "Share hides everything but its own random address");
+            var png = share.QrCodePng(); Check(png.Length > 200 && png[..8].SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }), "QR code rendered as PNG");
+            using var longShare = RingtoneShare.Start(capped.OutputFiles.First(File.Exists));
+            Check(longShare.TooLongForShare && (await http.GetStringAsync(longShare.Url)).Contains("under 30 seconds"), "Share warns when a tone is too long for iOS 26");
+        } else Console.WriteLine("SKIP Wi-Fi share: no network adapter");
+    } else Check(false, "Ringtone available for the iPhone tests");
 
 } catch (Exception error) { failed++; Console.Error.WriteLine(error); }
 finally { try { Directory.Delete(work, true); } catch (IOException) { } }

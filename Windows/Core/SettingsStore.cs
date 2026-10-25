@@ -47,8 +47,8 @@ public sealed class SettingsStore {
             Make("MP3 320 kbps", o => { o.Mode = "audio"; o.AudioFormat = "mp3"; o.AudioQuality = "k320"; }),
             Make("Lossless FLAC", o => { o.Mode = "audio"; o.AudioFormat = "flac"; }),
             Make("Podcast · Opus mono, normalized", o => { o.Mode = "audio"; o.AudioFormat = "opus"; o.AudioQuality = "k64"; o.Channels = "mono"; o.NormalizeAudio = true; }),
-            // Only the first 30 s are downloaded; change Trim to pick another part of the song.
-            Make("iPhone ringtone · M4R, 30 s", o => { o.Mode = "audio"; o.AudioFormat = "m4r"; o.AudioQuality = "k256"; o.SampleRate = "r44100"; o.Channels = "stereo"; o.TrimEnabled = true; o.TrimStart = "00:00:00"; o.TrimEnd = "00:00:" + Ringtone.DefaultSeconds; o.EmbedThumbnail = false; o.EmbedChapters = false; o.PlaylistMode = "single"; }),
+            // Only the first 29 s are downloaded; change Trim to pick another part of the song.
+            Make("iPhone ringtone · M4R", o => { o.Mode = "audio"; o.AudioFormat = "m4r"; o.AudioQuality = "k256"; o.SampleRate = "r44100"; o.Channels = "stereo"; o.TrimEnabled = true; o.TrimStart = "00:00:00"; o.TrimEnd = "00:00:" + Ringtone.DefaultSeconds; o.EmbedThumbnail = false; o.EmbedChapters = false; o.PlaylistMode = "single"; }),
             Make("Album · split chapters to MP3", o => { o.Mode = "audio"; o.AudioFormat = "mp3"; o.SplitChapters = true; }),
             Make("Ad-free · SponsorBlock cut", o => { o.SponsorBlockMode = "remove"; o.SponsorCategories = ["sponsor", "selfpromo", "interaction", "intro", "outro"]; }),
             Make("Shrink for sharing · HEVC 720p", o => { o.MaxResolution = "p1080"; o.EncodeEnabled = true; o.Encoder = "libx265"; o.Scale = "h720"; }),
