@@ -444,6 +444,49 @@ final class DownloadManager: ObservableObject {
         if job.options.makesRingtone {
             job.outputFiles = Ringtone.finalize(job.outputFiles, keepExisting: job.options.noOverwrites, log: job.appendLog)
         }
+        if job.options.sendsToAndroidWhenDone, !job.wasCancelled {
+            let tones = job.outputFiles.filter {
+                ["ogg", "mp3", "m4a"].contains(($0 as NSString).pathExtension.lowercased()) && FileManager.default.fileExists(atPath: $0)
+            }
+            if !tones.isEmpty {
+                job.status = .processing("Sending to Android")
+                let notification = job.options.makesNotificationSound
+                Task {
+                    let problem = await Self.sendToAndroid(tones, notification: notification) { line in
+                        DispatchQueue.main.async { job.appendLog(line) }
+                    }
+                    DispatchQueue.main.async {
+                        if let problem { job.appendLog("[Android] Not sent: \(problem)"); job.status = .warning("not sent to Android: \(problem)") }
+                        self.finish(job)
+                    }
+                }
+                return
+            }
+        }
+        finish(job)
+    }
+
+    /// Copies finished tones to the first ready Android phone, USB before Wi-Fi. Never changes the default
+    /// sound. Returns a user-facing reason when nothing could be sent.
+    private static func sendToAndroid(_ tones: [String], notification: Bool, log: @escaping (String) -> Void) async -> String? {
+        do {
+            let phones = try await AndroidSync.list()
+            guard let phone = phones.filter(\.ready).sorted(by: { !$0.wifi && $1.wifi }).first else {
+                return phones.isEmpty
+                    ? "no phone connected. Turn on USB debugging (cable) or Wireless debugging (Wi-Fi)."
+                    : "unlock the phone and tap Allow on the USB debugging prompt."
+            }
+            for tone in tones {
+                _ = try await AndroidSync.sendRingtone(path: tone, to: phone, setAsRingtone: false, notification: notification, log: log)
+            }
+            log("[Android] Sent to \(phone.name) over \(phone.wifi ? "Wi-Fi" : "USB").")
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private func finish(_ job: DownloadJob) {
         if case .warning = job.status {} else { job.status = .finished }
         job.progress = 1
         job.speed = ""; job.eta = ""

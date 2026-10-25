@@ -122,6 +122,10 @@ struct AudioOptionsView: View {
                     EnumPicker(title: "Tone type", selection: $o.toneKind)
                     Hint("Notification sounds start instantly (leading silence removed), are at most \(Ringtone.notificationMaxSeconds) seconds and fade out quickly.")
                 }
+                if o.audioFormat.isAndroidRingtone {
+                    Toggle("Send to Android when done", isOn: $o.autoSendToAndroid)
+                    Hint("Copies each finished tone to the connected phone (USB first, then Wi-Fi debugging): notification sounds to Notifications, ringtones to Ringtones. It's added to the sound list; the default sound isn't changed. Needs adb: brew install android-platform-tools.")
+                }
                 if o.mode != .audio {
                     Hint("These apply in Audio Only mode. Switch modes at the top of the window.")
                 } else if o.audioFormat.isLossless {

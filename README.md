@@ -137,6 +137,11 @@ Or send it straight from Jethriki with **Send to Android**:
 - **Wi-Fi** — the same, over Developer options › Wireless debugging after pairing once with a code.
 - **Wi-Fi share** — no setup: scan the QR code, download the tone, then pick it in Settings › Sound.
 
+On macOS, **Send to Android when done** (Audio options; on in the Android notification preset) copies each finished
+Android tone to the connected phone automatically: notification sounds to Notifications, ringtones to Ringtones,
+USB first, then Wi-Fi debugging. It doesn't change the default sound; with no phone connected the job finishes
+with a warning.
+
 **Notification sounds** — set **Tone type** to **Notification / text tone** for either ringtone
 format, or pick the **iPhone text tone · M4R** or **Android notification sound · OGG** preset. The
 sound starts instantly (leading silence removed), is loudness-levelled, at most 10 seconds (the
