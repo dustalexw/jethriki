@@ -530,6 +530,8 @@ struct DownloadOptions: Codable, Equatable {
     var audioFormat: AudioFormat = .mp3
     var audioQuality: AudioQuality = .q0
     var toneKind: ToneKind = .ringtone
+    /// Copy finished Android tones to the connected phone (Ringtones or Notifications folder) right away.
+    var autoSendToAndroid = false
 
     // Audio filters (FFmpeg)
     var normalizeAudio = false
@@ -636,6 +638,8 @@ struct DownloadOptions: Codable, Equatable {
     /// The download is finished as an iPhone ringtone (.m4r).
     var makesRingtone: Bool { mode == .audio && audioFormat.isRingtone }
     /// The download is a short notification / text tone (.m4r or Android .ogg).
+    /// A finished Android tone is copied to the phone automatically.
+    var sendsToAndroidWhenDone: Bool { mode == .audio && audioFormat.isAndroidRingtone && autoSendToAndroid }
     var makesNotificationSound: Bool {
         (makesRingtone || (mode == .audio && audioFormat.isAndroidRingtone)) && toneKind == .notification
     }

@@ -180,6 +180,7 @@ final class OptionsStore: ObservableObject {
                 o.mode = .audio
                 o.audioFormat = .android
                 o.toneKind = .notification
+                o.autoSendToAndroid = true
                 o.audioQuality = .k192
                 o.sampleRate = .r44100
                 o.channels = .stereo

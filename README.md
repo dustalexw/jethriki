@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.8.1/Jethriki-2.8.1-macOS.zip"><b>Download for macOS</b></a>
+  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.9.0/Jethriki-2.9.0-macOS.zip"><b>Download for macOS</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.8.1/Jethriki-2.8.1-Windows-x64.zip"><b>Download for Windows</b></a>
+  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.9.0/Jethriki-2.9.0-Windows-x64.zip"><b>Download for Windows</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.8.1/Jethriki-2.8.1-Linux-x64.tar.gz"><b>Download for Linux</b></a>
+  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.9.0/Jethriki-2.9.0-Linux-x64.tar.gz"><b>Download for Linux</b></a>
 </p>
 
 A native desktop front end for **yt-dlp** and **FFmpeg**, with SwiftUI on macOS,
@@ -29,9 +29,9 @@ icon sizes and `Windows/App/AppIcon.ico` the Windows ones.
 Jethriki was previously called Sipass and YT-DLP Studio; settings and presets from earlier
 versions carry over.
 
-The latest release is **Jethriki 2.8.1** for macOS, Windows and Linux.
+The latest release is **Jethriki 2.9.0** for macOS, Windows and Linux.
 
-On macOS, unzip **Jethriki-2.8.1-macOS.zip** and move **Jethriki.app** to Applications.
+On macOS, unzip **Jethriki-2.9.0-macOS.zip** and move **Jethriki.app** to Applications.
 
 The interface takes its look from the icon on all three platforms: a deep-space
 backdrop, frosted panels with an iridescent edge, a compact link field and a glowing
@@ -40,13 +40,13 @@ Download button. Choose **System**, **Light** or **Dark** under Settings → App
 ## Windows portable edition
 
 The Windows x64 edition includes the .NET desktop runtime, yt-dlp, FFmpeg, ffprobe
-and Deno. Extract the entire **Jethriki-2.8.1-Windows-x64.zip** and open `Jethriki.exe`; no dependencies need
+and Deno. Extract the entire **Jethriki-2.9.0-Windows-x64.zip** and open `Jethriki.exe`; no dependencies need
 to be installed separately. See [Windows instructions and build details](Windows/README.md).
 
 ## Linux portable edition
 
 The Linux x64 edition bundles the .NET runtime, yt-dlp, FFmpeg, ffprobe and Deno.
-Extract **Jethriki-2.8.1-Linux-x64.tar.gz**, run `Jethriki/Jethriki`, and optionally `./install.sh` to add it to
+Extract **Jethriki-2.9.0-Linux-x64.tar.gz**, run `Jethriki/Jethriki`, and optionally `./install.sh` to add it to
 your applications menu. See [Linux instructions and build details](Linux/README.md).
 
 ## macOS requirements
@@ -136,6 +136,11 @@ Or send it straight from Jethriki with **Send to Android**:
   `brew install android-platform-tools` or `sudo apt install adb`); Jethriki finds it but doesn't bundle it.
 - **Wi-Fi** — the same, over Developer options › Wireless debugging after pairing once with a code.
 - **Wi-Fi share** — no setup: scan the QR code, download the tone, then pick it in Settings › Sound.
+
+On macOS, **Send to Android when done** (Audio options; on in the Android notification preset) copies each finished
+Android tone to the connected phone automatically: notification sounds to Notifications, ringtones to Ringtones,
+USB first, then Wi-Fi debugging. It doesn't change the default sound; with no phone connected the job finishes
+with a warning.
 
 **Notification sounds** — set **Tone type** to **Notification / text tone** for either ringtone
 format, or pick the **iPhone text tone · M4R** or **Android notification sound · OGG** preset. The
