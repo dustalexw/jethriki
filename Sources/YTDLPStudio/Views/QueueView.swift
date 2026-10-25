@@ -77,7 +77,10 @@ struct JobRow: View {
 
     /// The finished ringtone file, if this job made one that still exists.
     private var ringtoneFile: String? {
-        guard job.status == .finished || job.status == .warning else { return nil }
+        switch job.status {
+        case .finished, .warning: break
+        default: return nil
+        }
         return job.outputFiles.first {
             URL(fileURLWithPath: $0).pathExtension.lowercased() == Ringtone.fileExtension && FileManager.default.fileExists(atPath: $0)
         }

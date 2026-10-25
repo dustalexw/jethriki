@@ -113,8 +113,16 @@ and “Artist / Album / 01 Song” file-name templates. Works with MP3, M4A, FLA
 **iPhone ringtones** — the **iPhone ringtone (M4R)** audio format and its preset save a
 ringtone that is ready to use: an AAC `.m4r` file, 44.1 kHz stereo, never longer than the
 40 seconds iOS allows, with a short fade in and out. The preset takes the first 30 seconds;
-use Trim to pick another part of the song. Drag the file onto your iPhone in Finder (or the
-Apple Devices app / iTunes on Windows) and it appears under Settings › Sounds › Ringtone.
+use Trim to pick another part of the song (the preset is now 29 s and named **iPhone ringtone · M4R**,
+because iOS 26 only accepts clips under 30 s). You can drag the file onto your iPhone in Finder (or the
+Apple Devices app / iTunes on Windows), or send it straight from Jethriki:
+
+- **USB** — copies the tone to the iPhone like an iTunes tone sync.
+- **Wi-Fi sync** — the same install when the phone has Wi-Fi sync turned on.
+- **Wi-Fi share (iOS 26+)** — scan the QR code, the phone downloads the tone, then tap Share › Use as Ringtone.
+
+iOS only lists directly installed tones after a restart, so the dialog offers a **Restart iPhone** button
+(it asks first). The tone then appears under Settings › Sounds › Ringtone.
 
 **Trim** — download only a time range, with optional frame-accurate cuts.
 

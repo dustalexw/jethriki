@@ -1,3 +1,12 @@
+## Unreleased
+
+### New: send ringtones to your iPhone
+Send a finished ringtone from Jethriki on macOS, Windows and Linux:
+
+- **USB** and **Wi-Fi sync** install the tone directly; use the **Restart iPhone** button (it asks first) so iOS shows it under Settings › Sounds › Ringtone.
+- **Wi-Fi share (iOS 26+)**: scan a QR code, download the tone on the phone, then tap Share › Use as Ringtone.
+- The ringtone preset is now **iPhone ringtone · M4R** and takes 29 seconds, because iOS 26 only accepts clips under 30 s.
+
 ## Jethriki 2.5.0 — Windows, macOS and Linux
 
 ### New: iPhone ringtones
