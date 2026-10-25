@@ -6,6 +6,8 @@ import CoreImage
 /// or through a Wi-Fi share the phone opens from a QR code.
 struct SendToAndroidView: View {
     let path: String
+    /// The tone is a notification / text sound, not a ringtone.
+    var notification: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @State private var seconds: Double?
@@ -67,7 +69,8 @@ struct SendToAndroidView: View {
             IconTile(symbol: "candybarphone", colors: [Theme.violet, Theme.pink], size: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(toneName).font(.headline).lineLimit(1).truncationMode(.middle)
-                Text(seconds.map { String(format: "Ringtone · %.0f seconds", $0) } ?? "Ringtone")
+                Text(seconds.map { String(format: "\(notification ? "Notification sound" : "Ringtone") · %.0f seconds", $0) }
+                     ?? (notification ? "Notification sound" : "Ringtone"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -104,12 +107,14 @@ struct SendToAndroidView: View {
                         }
                     }
                 }
-                Toggle("Also set as the phone ringtone", isOn: $setAsRingtone)
+                Toggle(notification ? "Also set as the notification sound" : "Also set as the phone ringtone", isOn: $setAsRingtone)
                     .toggleStyle(.checkbox)
             }
             if let listError, adbPath != nil { Warning(listError) }
             if let addedName {
-                Hint("Added “\(addedName)” to Ringtones.\(addedAsRingtone ? " It's now the phone ringtone." : "")",
+                Hint(notification
+                     ? "Added “\(addedName)” to Notifications.\(addedAsRingtone ? " It's now the notification sound." : "")"
+                     : "Added “\(addedName)” to Ringtones.\(addedAsRingtone ? " It's now the phone ringtone." : "")",
                      systemImage: "checkmark.circle.fill", tint: .green)
             }
             if let error { Warning(error) }
@@ -164,7 +169,9 @@ struct SendToAndroidView: View {
                             .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
                     }
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Scan with the phone camera, download the tone, then pick it in Settings › Sound & vibration › Phone ringtone.")
+                        Text(notification
+                             ? "Scan with the phone camera, download the tone, then pick it in Settings › Sound & vibration › Notification sound."
+                             : "Scan with the phone camera, download the tone, then pick it in Settings › Sound & vibration › Phone ringtone.")
                             .font(.callout)
                             .fixedSize(horizontal: false, vertical: true)
                         Text(share.url.absoluteString)
@@ -213,9 +220,10 @@ struct SendToAndroidView: View {
         error = nil
         addedName = nil
         let asRingtone = setAsRingtone
+        let isNotification = notification
         Task { @MainActor in
             do {
-                addedName = try await AndroidSync.sendRingtone(path: path, to: device, setAsRingtone: asRingtone)
+                addedName = try await AndroidSync.sendRingtone(path: path, to: device, setAsRingtone: asRingtone, notification: isNotification)
                 addedAsRingtone = asRingtone
             } catch {
                 self.error = error.localizedDescription
@@ -257,7 +265,7 @@ struct SendToAndroidView: View {
     private func startShare() {
         guard share == nil else { return }
         do {
-            let server = try RingtoneShare(path: path)
+            let server = try RingtoneShare(path: path, notification: notification)
             server.onDownload = { [weak server] in shareDownloads = server?.downloads ?? 0 }
             share = server
         } catch {

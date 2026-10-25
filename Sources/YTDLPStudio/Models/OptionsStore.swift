@@ -146,6 +146,22 @@ final class OptionsStore: ObservableObject {
                 o.embedChapters = false
                 o.playlistMode = .single
             },
+            make("iPhone text tone · M4R") { o in
+                o.mode = .audio
+                o.audioFormat = .m4r
+                o.toneKind = .notification
+                o.audioQuality = .k256
+                o.sampleRate = .r44100
+                o.channels = .stereo
+                o.normalizeAudio = true
+                // Only the first 5 s are downloaded; change Trim to pick another part of the song.
+                o.trimEnabled = true
+                o.trimStart = "00:00:00"
+                o.trimEnd = "00:00:0\(Ringtone.notificationDefaultSeconds)"
+                o.embedThumbnail = false
+                o.embedChapters = false
+                o.playlistMode = .single
+            },
             make("Android ringtone · OGG") { o in
                 o.mode = .audio
                 o.audioFormat = .android
@@ -156,6 +172,21 @@ final class OptionsStore: ObservableObject {
                 o.trimEnabled = true
                 o.trimStart = "00:00:00"
                 o.trimEnd = "00:00:\(Ringtone.androidDefaultSeconds)"
+                o.embedThumbnail = false
+                o.embedChapters = false
+                o.playlistMode = .single
+            },
+            make("Android notification sound · OGG") { o in
+                o.mode = .audio
+                o.audioFormat = .android
+                o.toneKind = .notification
+                o.audioQuality = .k192
+                o.sampleRate = .r44100
+                o.channels = .stereo
+                o.normalizeAudio = true
+                o.trimEnabled = true
+                o.trimStart = "00:00:00"
+                o.trimEnd = "00:00:0\(Ringtone.notificationDefaultSeconds)"
                 o.embedThumbnail = false
                 o.embedChapters = false
                 o.playlistMode = .single

@@ -16,7 +16,8 @@ public sealed class AndroidException(string message, Exception? inner = null) : 
 /// scanner is asked to index it so the sound picker lists it, and it can be made the phone ringtone.
 public static class Android {
     public const string RingtonesFolder = "/sdcard/Ringtones";
-    const string StorageFolder = "/storage/emulated/0/Ringtones";
+    public const string NotificationsFolder = "/sdcard/Notifications";
+    const string StorageFolder = "/storage/emulated/0/Ringtones", NotificationsStorageFolder = "/storage/emulated/0/Notifications";
     const string MissingAdb = "Jethriki needs Google's adb tool to send to Android. Install Android Platform Tools (Windows: winget install Google.PlatformTools · macOS: brew install android-platform-tools · Linux: sudo apt install adb), then try again.";
     const string NotAllowed = "Unlock the phone and tap Allow on the USB debugging prompt, then try again.";
 
@@ -71,8 +72,8 @@ public static class Android {
             throw new AndroidException($"Could not connect to {hostPort.Trim()}: {First(result)}. Turn on Developer options › Wireless debugging, keep the phone on the same Wi-Fi, and use the address shown there (not the pairing address).");
     }
 
-    /// Copies the tone to /sdcard/Ringtones and returns its path on the phone.
-    public static async Task<string> SendRingtoneAsync(AndroidDevice device, string path, bool setAsRingtone, Action<string>? log = null, CancellationToken ct = default) {
+    /// Copies the tone to /sdcard/Ringtones (or /sdcard/Notifications for a notification sound) and returns its path on the phone.
+    public static async Task<string> SendRingtoneAsync(AndroidDevice device, string path, bool setAsRingtone, Action<string>? log = null, bool notification = false, CancellationToken ct = default) {
         string ext = Path.GetExtension(path).ToLowerInvariant();
         if (ext is not (".ogg" or ".mp3" or ".m4a")) throw new AndroidException(Path.GetFileName(path) + " isn't an Android ringtone file. Download it with the Android ringtone preset (OGG) first.");
         if (!File.Exists(path)) throw new AndroidException("The file " + path + " no longer exists.");
@@ -81,16 +82,17 @@ public static class Android {
             case "device": break;
             default: throw new AndroidException($"{device.Model} is offline. Unplug and replug the cable (turn on Developer options › USB debugging), or for Wi-Fi turn on Wireless debugging and connect again.");
         }
-        string name = Path.GetFileName(path), remote = RingtonesFolder + "/" + name;
+        string name = Path.GetFileName(path), folder = notification ? NotificationsFolder : RingtonesFolder, remote = folder + "/" + name;
+        string kind = notification ? "notification sound" : "ringtone";
         async Task<ProcessResult> Shell(string command) => Check(await RunAsync(["-s", device.Serial, "shell", command], ct), device);
-        log?.Invoke($"[Android] Preparing {RingtonesFolder} on {device.Model}");
-        var made = await Shell("mkdir -p " + Quote(RingtonesFolder));
-        if (made.ExitCode != 0) throw new AndroidException("The phone refused to create the Ringtones folder: " + First(made));
+        log?.Invoke($"[Android] Preparing {folder} on {device.Model}");
+        var made = await Shell("mkdir -p " + Quote(folder));
+        if (made.ExitCode != 0) throw new AndroidException($"The phone refused to create the {(notification ? "Notifications" : "Ringtones")} folder: " + First(made));
         log?.Invoke($"[Android] Copying {name} to {device.Model} over {device.Connection}");
         var pushed = Check(await RunAsync(["-s", device.Serial, "push", path, remote], ct), device);
         if (pushed.ExitCode != 0) throw new AndroidException("Copying to the phone failed: " + First(pushed));
         log?.Invoke("[Android] Asking the phone to index the new tone");
-        try { await Shell("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d " + Quote("file://" + StorageFolder + "/" + Uri.EscapeDataString(name))); } catch (AndroidException) { }
+        try { await Shell("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d " + Quote("file://" + (notification ? NotificationsStorageFolder : StorageFolder) + "/" + Uri.EscapeDataString(name))); } catch (AndroidException) { }
         string where = "_display_name='" + name.Replace("'", "''") + "'";
         string? id = null;
         for (int attempt = 0; attempt < 10 && id == null; attempt++) {
@@ -101,15 +103,16 @@ public static class Android {
             } catch (AndroidException) when (attempt < 9) { }
         }
         if (id != null) {
-            try { await Shell($"content update --uri content://media/external/audio/media/{id} --bind is_ringtone:i:1"); } catch (AndroidException) { }
+            try { await Shell($"content update --uri content://media/external/audio/media/{id} --bind {(notification ? "is_notification" : "is_ringtone")}:i:1"); } catch (AndroidException) { }
         }
         if (setAsRingtone) {
-            if (id == null) throw new AndroidException($"{name} was copied to the phone, but Android hasn't indexed it yet, so it can't be set as the ringtone. Pick it in Settings › Sound & vibration › Phone ringtone, or try again in a moment.");
-            log?.Invoke("[Android] Setting it as the phone ringtone");
-            var set = await Shell($"settings put system ringtone content://media/external/audio/media/{id}");
-            if (set.ExitCode != 0) throw new AndroidException("The tone was copied, but the phone wouldn't change its ringtone: " + First(set) + ". Pick it in Settings › Sound & vibration › Phone ringtone.");
+            if (id == null) throw new AndroidException($"{name} was copied to the phone, but Android hasn't indexed it yet, so it can't be set as the {kind}. Pick it in Settings › Sound & vibration › {(notification ? "Notification sound" : "Phone ringtone")}, or try again in a moment.");
+            log?.Invoke(notification ? "[Android] Setting it as the notification sound" : "[Android] Setting it as the phone ringtone");
+            var set = await Shell($"settings put system {(notification ? "notification_sound" : "ringtone")} content://media/external/audio/media/{id}");
+            if (set.ExitCode != 0) throw new AndroidException($"The tone was copied, but the phone wouldn't change its {kind}: " + First(set) + $". Pick it in Settings › Sound & vibration › {(notification ? "Notification sound" : "Phone ringtone")}.");
         }
-        log?.Invoke(setAsRingtone ? $"[Android] Done. {name} is now the phone ringtone." : $"[Android] Done. {name} is in Settings › Sound & vibration › Phone ringtone.");
+        string setting = notification ? "Notification sound" : "Phone ringtone";
+        log?.Invoke(setAsRingtone ? $"[Android] Done. {name} is now the {(notification ? "notification sound" : "phone ringtone")}." : $"[Android] Done. {name} is in Settings › Sound & vibration › {setting}.");
         return remote;
     }
 

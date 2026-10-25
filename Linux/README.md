@@ -22,7 +22,7 @@ Copy command produces a POSIX shell command. **Replace original** moves the old 
 Install the .NET 10 SDK, then run:
 
 ```bash
-Linux/scripts/build.sh 2.7.0
+Linux/scripts/build.sh 2.8.0
 YTDLP_TEST_TOOLS="$PWD/Linux/dist/Jethriki/tools" dotnet run --project Windows/Tests/YtdlpStudio.Tests.csproj -c Release
 ```
 

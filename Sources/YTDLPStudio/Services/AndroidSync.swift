@@ -129,6 +129,7 @@ enum AndroidSync {
     /// Copies the tone to the phone's Ringtones folder, lets Android index it, and optionally makes it the phone ringtone.
     /// Returns the tone's name.
     static func sendRingtone(path: String, to target: AndroidTarget, setAsRingtone: Bool,
+                             notification: Bool = false,
                              log: @escaping (String) -> Void = { _ in }) async throws -> String {
         let adbPath = try requireAdb()
         let fileName = (path as NSString).lastPathComponent
@@ -152,15 +153,17 @@ enum AndroidSync {
             return try await adb(adbPath, base + ["shell", command])
         }
 
-        let mkdir = try await shell("mkdir -p \(quote(tonesFolder))")
+        let folder = notification ? "/sdcard/Notifications" : tonesFolder
+        let scanFolder = notification ? "/storage/emulated/0/Notifications" : "/storage/emulated/0/Ringtones"
+        let mkdir = try await shell("mkdir -p \(quote(folder))")
         try failIfDeviceError(mkdir, "Couldn't open the phone's Ringtones folder.")
 
         log("adb push \(fileName)")
-        let push = try await adb(adbPath, base + ["push", path, tonesFolder + "/" + name])
+        let push = try await adb(adbPath, base + ["push", path, folder + "/" + name])
         try failIfDeviceError(push, "Couldn't copy the tone to the phone.")
 
         // Ask Android to index the new file; some versions print an error here even though scanning works.
-        let scan = try? await shell("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d \(quote("file:///storage/emulated/0/Ringtones/" + name))")
+        let scan = try? await shell("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d \(quote("file://" + scanFolder + "/" + name))")
         if let scan, scan.status != 0 { log("media scan: \(firstLine(scan.stderr + scan.stdout))") }
 
         var mediaId: Int?
@@ -174,11 +177,13 @@ enum AndroidSync {
             guard let id = mediaId else {
                 throw RingtoneError("The tone is on the phone, but Android hasn't added it to its sound list yet. Wait a moment and try again, or pick it in Settings › Sound.")
             }
-            let put = try await shell("settings put system ringtone \(mediaUri)/\(id)")
-            try failIfDeviceError(put, "Couldn't set the phone ringtone.")
-            // Marks the file as a ringtone so it shows in the picker; not every Android version allows this.
-            let flag = try? await shell("content update --uri \(mediaUri)/\(id) --bind is_ringtone:i:1")
-            if let flag, flag.status != 0 { log("is_ringtone: \(firstLine(flag.stderr + flag.stdout))") }
+            let setting = notification ? "notification_sound" : "ringtone"
+            let put = try await shell("settings put system \(setting) \(mediaUri)/\(id)")
+            try failIfDeviceError(put, notification ? "Couldn't set the notification sound." : "Couldn't set the phone ringtone.")
+            // Marks the file as a ringtone / notification so it shows in the picker; not every Android version allows this.
+            let column = notification ? "is_notification" : "is_ringtone"
+            let flag = try? await shell("content update --uri \(mediaUri)/\(id) --bind \(column):i:1")
+            if let flag, flag.status != 0 { log("\(column): \(firstLine(flag.stderr + flag.stdout))") }
         }
         return toneName
     }

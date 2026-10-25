@@ -12,6 +12,9 @@ public static class Ringtone {
     /// Android has no length limit, but a ringtone rarely plays longer than a minute before voicemail.
     public const int AndroidMaxSeconds = 60, AndroidDefaultSeconds = 30;
     public const double FadeInSeconds = 0.3, FadeOutSeconds = 2.0;
+    /// Notification and text tones: at most 10 seconds, starting instantly, with a short fade out.
+    public const int NotificationMaxSeconds = 10, NotificationDefaultSeconds = 5;
+    public const double NotificationFadeInSeconds = 0.02, NotificationFadeOutSeconds = 0.4;
     /// Bitrate used when a VBR quality is chosen, since Apple's own ringtones are constant-bitrate AAC.
     public const string DefaultBitrate = "256k";
 
@@ -25,9 +28,16 @@ public static class Ringtone {
         bool android = o.AudioFormat == "android";
         // Android tones are Ogg Vorbis; VBR quality 6 is about 192 kbps.
         List<string> codec = android ? ["-c:a", "libvorbis", .. kbps != null ? new[] { "-b:a", kbps } : ["-q:a", "6"]] : ["-c:a", "aac", "-b:a", kbps ?? DefaultBitrate];
-        var chain = new List<string> { "atrim=end=" + (android ? AndroidMaxSeconds : MaxSeconds), "asetpts=PTS-STARTPTS" };
-        chain.AddRange(CommandBuilder.FilterChain(o));
-        chain.AddRange(["afade=t=in:d=" + N(FadeInSeconds), "areverse", "afade=t=in:d=" + N(FadeOutSeconds), "areverse"]);
+        var chain = new List<string>();
+        if (o.MakesNotificationSound) {
+            chain.AddRange(["silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05", "atrim=end=" + NotificationMaxSeconds, "asetpts=PTS-STARTPTS"]);
+            chain.AddRange(CommandBuilder.FilterChain(o));
+            chain.AddRange(["afade=t=in:d=" + N(NotificationFadeInSeconds), "areverse", "afade=t=in:d=" + N(NotificationFadeOutSeconds), "areverse"]);
+        } else {
+            chain.AddRange(["atrim=end=" + (android ? AndroidMaxSeconds : MaxSeconds), "asetpts=PTS-STARTPTS"]);
+            chain.AddRange(CommandBuilder.FilterChain(o));
+            chain.AddRange(["afade=t=in:d=" + N(FadeInSeconds), "areverse", "afade=t=in:d=" + N(FadeOutSeconds), "areverse"]);
+        }
         return [.. codec, "-af", string.Join(',', chain),
             "-ar", o.SampleRate == "keep" ? "44100" : o.SampleRate[1..], "-ac", o.Channels == "mono" ? "1" : "2"];
     }

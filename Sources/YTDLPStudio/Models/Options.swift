@@ -216,6 +216,20 @@ enum Ringtone {
     static let fadeOutSeconds = 2.0
     /// Bitrate used when a VBR quality is chosen, since Apple's own ringtones are constant-bitrate AAC.
     static let defaultBitrate = "256k"
+    /// Notification and text tones are short: they are cut to this length whatever the trim settings.
+    static let notificationMaxSeconds = 10
+    static let notificationDefaultSeconds = 5
+}
+
+/// What a ringtone-format file is used for.
+enum ToneKind: String, OptionEnum {
+    case ringtone, notification
+    var label: String {
+        switch self {
+        case .ringtone: return "Ringtone"
+        case .notification: return "Notification / text tone"
+        }
+    }
 }
 
 enum AudioQuality: String, OptionEnum {
@@ -515,6 +529,7 @@ struct DownloadOptions: Codable, Equatable {
     // Audio extraction
     var audioFormat: AudioFormat = .mp3
     var audioQuality: AudioQuality = .q0
+    var toneKind: ToneKind = .ringtone
 
     // Audio filters (FFmpeg)
     var normalizeAudio = false
@@ -620,6 +635,10 @@ struct DownloadOptions: Codable, Equatable {
     }
     /// The download is finished as an iPhone ringtone (.m4r).
     var makesRingtone: Bool { mode == .audio && audioFormat.isRingtone }
+    /// The download is a short notification / text tone (.m4r or Android .ogg).
+    var makesNotificationSound: Bool {
+        (makesRingtone || (mode == .audio && audioFormat.isAndroidRingtone)) && toneKind == .notification
+    }
     /// Music tagging is active for this download.
     var musicTagsActive: Bool {
         embedMetadata && musicTags && (mode == .audio || musicTagsOnVideo)

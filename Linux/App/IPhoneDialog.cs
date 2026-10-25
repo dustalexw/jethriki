@@ -21,6 +21,7 @@ public sealed class IPhoneWindow : ThemedWindow {
     readonly string path;
     readonly Action<string>? log;
     readonly CancellationTokenSource closing = new();
+    readonly bool notification;
     readonly DispatcherTimer poll = new() { Interval = TimeSpan.FromSeconds(3) };
     readonly ListBox devices = new() { Classes = { "nav" }, Height = 96 };
     readonly Button send = Primary("Send"), refresh = Secondary("Refresh"), restart = Secondary("Restart iPhone");
@@ -29,8 +30,8 @@ public sealed class IPhoneWindow : ThemedWindow {
     IPhoneDevice[] shown = [];
     IPhoneDevice? sentTo; bool busy, listing;
 
-    public IPhoneWindow(string path, Action<string>? log = null) : base("Send to iPhone", 520, 600) {
-        this.path = path; this.log = log; SizeToContent = SizeToContent.Height; CanResize = false;
+    public IPhoneWindow(string path, Action<string>? log = null, bool notification = false) : base("Send to iPhone", 520, 600) {
+        this.path = path; this.log = log; this.notification = notification; SizeToContent = SizeToContent.Height; CanResize = false;
         TextBlock Heading(string text) => new() { Text = text, FontSize = 16, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
         TextBlock Note(string text) => new() { Text = text, Classes = { "secondary" }, FontSize = 12.5, TextWrapping = TextWrapping.Wrap, MaxWidth = 460 };
 
@@ -100,7 +101,7 @@ public sealed class IPhoneWindow : ThemedWindow {
         restart.IsVisible = false; SetBusy(true, $"Sending to {device.Name}…");
         try {
             string name = await IPhone.InstallRingtoneAsync(device, path, null, log, closing.Token);
-            sentTo = device; SetBusy(false, $"Added “{name}”. It appears in Settings › Sounds after the iPhone restarts."); restart.IsVisible = true;
+            sentTo = device; SetBusy(false, notification ? $"Added “{name}”. After the iPhone restarts, pick it in Settings › Sounds & Haptics › Text Tone." : $"Added “{name}”. It appears in Settings › Sounds after the iPhone restarts."); restart.IsVisible = true;
         } catch (OperationCanceledException) { return; }
         catch (Exception error) { SetBusy(false); SetStatus(Message(error), true); }
     }

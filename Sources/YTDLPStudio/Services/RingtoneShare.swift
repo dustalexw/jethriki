@@ -113,7 +113,11 @@ final class RingtoneShare {
     private var listener: Int32 = -1
     private let lock = NSLock()
 
-    init(path: String) throws {
+    /// The Android page gives notification-sound steps instead of ringtone steps.
+    private let notification: Bool
+
+    init(path: String, notification: Bool = false) throws {
+        self.notification = notification
         guard let data = FileManager.default.contents(atPath: path) else { throw RingtoneError("Couldn't read \((path as NSString).lastPathComponent).") }
         let android = (path as NSString).pathExtension.lowercased() == "ogg"
         guard let seconds = android ? Ogg.durationSeconds(data) : MP4.durationSeconds(data) else {
@@ -259,6 +263,9 @@ final class RingtoneShare {
         func html(_ s: String) -> String { s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;") }
         let title = html(name), file = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
         let length = String(format: "%.0f", seconds)
+        let steps = notification
+            ? "Open <b>Settings</b> › <b>Sound &amp; vibration</b> › <b>Notification sound</b> (Samsung: <b>Notification sounds</b>), tap <b>+</b> or <b>My sounds</b>, and pick the downloaded tone."
+            : "Open <b>Settings</b> › <b>Sound &amp; vibration</b> › <b>Phone ringtone</b> (Samsung: <b>Ringtone</b>), tap <b>+</b> or <b>My sounds</b>, and pick the downloaded tone."
         if forAndroid {
             return """
             <!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
@@ -270,9 +277,9 @@ final class RingtoneShare {
             h1{font-size:22px;margin:0 0 4px}p{margin:0 0 16px;color:var(--muted)}ol{padding-left:22px;margin:0 0 8px}li{margin:0 0 10px}
             a.button{display:block;text-align:center;background:linear-gradient(90deg,#7e6eff,#e650dc);color:#fff;text-decoration:none;font-weight:600;padding:15px;border-radius:14px;margin:4px 0 22px}
             </style></head><body><main>
-            <h1>\(title)</h1><p>Phone ringtone from Jethriki · \(length) seconds</p>
-            <a class=button href="\(file)" download>Download ringtone</a>
-            <ol><li>Tap <b>Download ringtone</b>. Open <b>Settings</b> › <b>Sound &amp; vibration</b> › <b>Phone ringtone</b> (Samsung: <b>Ringtone</b>), tap <b>+</b> or <b>My sounds</b>, and pick the downloaded tone.</li></ol>
+            <h1>\(title)</h1><p>\(notification ? "Notification sound" : "Phone ringtone") from Jethriki · \(length) seconds</p>
+            <a class=button href="\(file)" download>Download \(notification ? "tone" : "ringtone")</a>
+            <ol><li>Tap <b>Download \(notification ? "tone" : "ringtone")</b>. \(steps)</li></ol>
             </main></body></html>
             """
         }

@@ -137,7 +137,7 @@ try {
     }
 
     // iPhone ringtone preset: AAC .m4r, 30 s by default, never longer than 40 s, faded out.
-    var ringtonePreset = SettingsStore.BuiltIn.Single(p => p.Options.MakesRingtone);
+    var ringtonePreset = SettingsStore.BuiltIn.Single(p => p.Options.MakesRingtone && !p.Options.MakesNotificationSound);
     var ringtoneCommand = CommandBuilder.Arguments(ringtonePreset.Options, ["URL"]);
     Check(ringtoneCommand[ringtoneCommand.IndexOf("--audio-format") + 1] == "m4a" && ringtoneCommand.Contains("*00:00:00-00:00:29")
         && ringtoneCommand.Any(a => a.StartsWith("ExtractAudio+ffmpeg_o:-c:a aac -b:a 256k -af atrim=end=40,")), "Ringtone preset command");
@@ -175,7 +175,7 @@ try {
     } else Check(false, "Uncut ringtone download: " + capped.Stage);
 
     // Android ringtone preset: Ogg Vorbis, 30 s by default, faded out, kept apart from the iPhone format.
-    var androidPreset = SettingsStore.BuiltIn.Single(p => p.Options.MakesAndroidRingtone);
+    var androidPreset = SettingsStore.BuiltIn.Single(p => p.Options.MakesAndroidRingtone && !p.Options.MakesNotificationSound);
     var androidCommand = CommandBuilder.Arguments(androidPreset.Options, ["URL"]);
     Check(androidCommand[androidCommand.IndexOf("--audio-format") + 1] == "vorbis" && androidCommand.Contains("*00:00:00-00:00:30") && !androidPreset.Options.MakesRingtone
         && androidCommand.Any(a => a.StartsWith("ExtractAudio+ffmpeg_o:-c:a libvorbis -b:a 192k -af atrim=end=60,")), "Android ringtone preset command");
@@ -186,6 +186,49 @@ try {
         if (job.State != JobState.Finished) Console.WriteLine(string.Join('\n', job.Log));
         return job;
     }
+    // Notification / text tones: leading silence removed, at most 10 s, quick fade out; ringtones keep their silence.
+    var iosNotifPreset = SettingsStore.BuiltIn.Single(p => p.Name == "iPhone text tone · M4R");
+    var androidNotifPreset = SettingsStore.BuiltIn.Single(p => p.Name == "Android notification sound · OGG");
+    foreach (var (notifPreset, label) in new[] { (iosNotifPreset, "iPhone text tone"), (androidNotifPreset, "Android notification sound") }) {
+        var notifCommand = CommandBuilder.Arguments(notifPreset.Options, ["URL"]);
+        var filter = notifCommand.FirstOrDefault(a => a.StartsWith("ExtractAudio+ffmpeg_o:")) ?? "";
+        Check(notifPreset.Options.MakesNotificationSound && notifCommand.Contains("*00:00:00-00:00:05") && filter.Contains("silenceremove=start_periods=1") && filter.Contains("afade=t=in:d=0.4") && filter.Contains("atrim=end=10") && filter.Contains("afade=t=in:d=0.02"), label + " preset command");
+    }
+    Check(!ringtonePreset.Options.MakesNotificationSound && !androidPreset.Options.MakesNotificationSound
+        && !CommandBuilder.Arguments(ringtonePreset.Options, ["URL"]).Any(a => a.Contains("silenceremove")), "Ringtone presets are not notification sounds");
+    var silentVideo = Path.Combine(work, "silent-start.mp4");
+    var silentResult = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo:d=1", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=8",
+        "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=10:duration=9", "-filter_complex", "[0][1]concat=n=2:v=0:a=1[a]", "-map", "2:v", "-map", "[a]", "-c:v", "libx264", "-c:a", "aac", "-shortest", silentVideo]);
+    Check(silentResult.ExitCode == 0, "Creates source clip with 1 s of leading silence");
+    using var silentServer = new LocalMediaServer(silentVideo);
+    async Task<DownloadJob> DownloadSilent(Preset preset, string folder) {
+        var options = preset.Options.Clone(); options.OutputDirectory = Path.Combine(work, folder); options.ExtraArgs = "--enable-file-urls";
+        var queue = new DownloadQueue(real); queue.Enqueue([silentServer.Url], options);
+        var job = queue.Jobs[0]; await job.Completion.WaitAsync(TimeSpan.FromSeconds(90));
+        if (job.State != JobState.Finished) Console.WriteLine(string.Join('\n', job.Log));
+        return job;
+    }
+    double MeanVolume(string log) => double.Parse(System.Text.RegularExpressions.Regex.Match(log, @"mean_volume: (-?[\d.]+)").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+    async Task<double> Level(string file, string[] window) => MeanVolume((await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "info", .. window, "-i", file, "-af", "volumedetect", "-f", "null", "-"])).Stderr);
+    string? notifTone = null;
+    foreach (var (notifPreset, ext, codec, label) in new[] { (iosNotifPreset, ".m4r", "aac", "iPhone text tone"), (androidNotifPreset, ".ogg", "vorbis", "Android notification sound") }) {
+        var notifJob = await DownloadSilent(notifPreset, "notif-" + ext[1..]);
+        if (notifJob.OutputFiles.FirstOrDefault(File.Exists) is { } notifFile) {
+            var p = await ProbeAudio(notifFile);
+            Check(notifFile.EndsWith(ext) && p.Codec == codec && Math.Abs(p.Duration - 4) < 0.3, $"{label} is ~4 s {codec} {ext} (silence removed from the 5 s section): {Path.GetFileName(notifFile)}, {p.Duration} s");
+            double head = await Level(notifFile, ["-t", "0.1"]), mid = await Level(notifFile, ["-ss", "2", "-t", "1"]), tail = await Level(notifFile, ["-sseof", "-0.05"]);
+            Check(head > mid - 10, $"{label} starts loud ({head} vs {mid} dB)");
+            Check(tail < mid - 15, $"{label} fades out quickly ({tail} vs {mid} dB)");
+            if (ext == ".ogg") notifTone = notifFile;
+        } else Check(false, label + " download: " + notifJob.Stage);
+    }
+    var keepSilence = await DownloadSilent(new Preset(ringtonePreset.Name, ringtonePreset.Options), "notif-ringtone");
+    if (keepSilence.OutputFiles.FirstOrDefault(File.Exists) is { } keptFile) {
+        double head = await Level(keptFile, ["-t", "0.5"]), mid = await Level(keptFile, ["-ss", "2", "-t", "1"]);
+        Check(Math.Abs((await ProbeAudio(keptFile)).Duration - 9) < 0.3, "Ringtone keeps its full 9 s including the silence");
+        Check(head < mid - 30, $"Ringtone keeps the leading silence ({head} vs {mid} dB)");
+    } else Check(false, "Ringtone keeps leading silence: " + keepSilence.Stage);
+
     var android30 = await DownloadAndroid(_ => { });
     if (android30.OutputFiles.FirstOrDefault(File.Exists) is { } androidTone) {
         var p = await ProbeAudio(androidTone);
@@ -223,6 +266,12 @@ try {
             await Android.SendRingtoneAsync(phones[0], androidTone, true);
             Check(File.Exists(Path.Combine(adbState, "settings.txt")) && File.ReadAllText(Path.Combine(adbState, "settings.txt")).Contains("settings put system ringtone content://media/external/audio/media/42"), "Set as ringtone records the media id");
             Check(File.ReadAllText(Path.Combine(adbState, "log.txt")).Contains("is_ringtone:i:1"), "Tone is marked as a ringtone");
+            if (notifTone != null) {
+                string notifSent = await Android.SendRingtoneAsync(phones[0], notifTone, true, null, notification: true);
+                Check(notifSent == "/sdcard/Notifications/" + Path.GetFileName(notifTone) && File.Exists(Path.Combine(adbState, "phone", "Notifications", Path.GetFileName(notifTone))), "Notification sound copied into Notifications");
+                string adbLog = File.ReadAllText(Path.Combine(adbState, "log.txt"));
+                Check(adbLog.Contains("is_notification:i:1") && File.ReadAllText(Path.Combine(adbState, "settings.txt")).Contains("settings put system notification_sound content://media/external/audio/media/42"), "Notification sound marked and set as the notification sound");
+            }
             try { await Android.SendRingtoneAsync(phones[2], androidTone, false); Check(false, "Unauthorized phone is refused"); }
             catch (AndroidException error) { Check(error.Message.Contains("Allow"), "Unauthorized phone gets an Allow hint: " + error.Message); }
             try { await Android.SendRingtoneAsync(phones[0], Path.Combine(work, "source-video.mp4"), false); Check(false, "Non-audio file refused for Android"); }
@@ -384,8 +433,7 @@ static class FakeAdb {
                 if (command.StartsWith("mkdir -p ")) { Directory.CreateDirectory(Local(command[9..].Trim('\''))); return 0; }
                 if (command.StartsWith("am broadcast")) { Console.WriteLine("Broadcast completed: result=0"); return 0; }
                 if (command.StartsWith("content query")) {
-                    string folder = Path.Combine(phone, "Ringtones");
-                    if (Directory.Exists(folder) && Directory.GetFiles(folder).Any(f => command.Contains("'" + Path.GetFileName(f) + "'"))) Console.WriteLine("Row: 0 _id=42");
+                    if (new[] { "Ringtones", "Notifications" }.Select(d => Path.Combine(phone, d)).Where(Directory.Exists).SelectMany(Directory.GetFiles).Any(f => command.Contains("'" + Path.GetFileName(f) + "'"))) Console.WriteLine("Row: 0 _id=42");
                     else Console.WriteLine("No result found.");
                     return 0;
                 }

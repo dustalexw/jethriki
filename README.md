@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.7.0/Jethriki-2.7.0-macOS.zip"><b>Download for macOS</b></a>
+  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.8.0/Jethriki-2.8.0-macOS.zip"><b>Download for macOS</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.7.0/Jethriki-2.7.0-Windows-x64.zip"><b>Download for Windows</b></a>
+  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.8.0/Jethriki-2.8.0-Windows-x64.zip"><b>Download for Windows</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.7.0/Jethriki-2.7.0-Linux-x64.tar.gz"><b>Download for Linux</b></a>
+  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.8.0/Jethriki-2.8.0-Linux-x64.tar.gz"><b>Download for Linux</b></a>
 </p>
 
 A native desktop front end for **yt-dlp** and **FFmpeg**, with SwiftUI on macOS,
@@ -29,9 +29,9 @@ icon sizes and `Windows/App/AppIcon.ico` the Windows ones.
 Jethriki was previously called Sipass and YT-DLP Studio; settings and presets from earlier
 versions carry over.
 
-The latest release is **Jethriki 2.7.0** for macOS, Windows and Linux.
+The latest release is **Jethriki 2.8.0** for macOS, Windows and Linux.
 
-On macOS, unzip **Jethriki-2.7.0-macOS.zip** and move **Jethriki.app** to Applications.
+On macOS, unzip **Jethriki-2.8.0-macOS.zip** and move **Jethriki.app** to Applications.
 
 The interface takes its look from the icon on all three platforms: a deep-space
 backdrop, frosted panels with an iridescent edge, a compact link field and a glowing
@@ -40,13 +40,13 @@ Download button. Choose **System**, **Light** or **Dark** under Settings → App
 ## Windows portable edition
 
 The Windows x64 edition includes the .NET desktop runtime, yt-dlp, FFmpeg, ffprobe
-and Deno. Extract the entire **Jethriki-2.7.0-Windows-x64.zip** and open `Jethriki.exe`; no dependencies need
+and Deno. Extract the entire **Jethriki-2.8.0-Windows-x64.zip** and open `Jethriki.exe`; no dependencies need
 to be installed separately. See [Windows instructions and build details](Windows/README.md).
 
 ## Linux portable edition
 
 The Linux x64 edition bundles the .NET runtime, yt-dlp, FFmpeg, ffprobe and Deno.
-Extract **Jethriki-2.7.0-Linux-x64.tar.gz**, run `Jethriki/Jethriki`, and optionally `./install.sh` to add it to
+Extract **Jethriki-2.8.0-Linux-x64.tar.gz**, run `Jethriki/Jethriki`, and optionally `./install.sh` to add it to
 your applications menu. See [Linux instructions and build details](Linux/README.md).
 
 ## macOS requirements
@@ -137,6 +137,13 @@ Or send it straight from Jethriki with **Send to Android**:
 - **Wi-Fi** — the same, over Developer options › Wireless debugging after pairing once with a code.
 - **Wi-Fi share** — no setup: scan the QR code, download the tone, then pick it in Settings › Sound.
 
+**Notification sounds** — set **Tone type** to **Notification / text tone** for either ringtone
+format, or pick the **iPhone text tone · M4R** or **Android notification sound · OGG** preset. The
+sound starts instantly (leading silence removed), is loudness-levelled, at most 10 seconds (the
+presets take 5) and fades out in 0.4 s. Send to Android puts it in the phone's Notifications folder
+and can make it the default notification sound; on iPhone, pick it under Settings › Sounds & Haptics ›
+Text Tone after the restart.
+
 **Trim** — download only a time range, with optional frame-accurate cuts.
 
 **Playlist** — single video vs whole playlist, item ranges like `1-5,8,-3::`, and a
@@ -153,8 +160,8 @@ folders) or your own, safe-ASCII names, overwrite and file-date behavior.
 **Queue** — several downloads at once (configurable), live progress, speed, ETA and
 size, post-processing stage, per-job log, cancel, retry and Show in Finder.
 
-**Presets** — eleven built-ins (Best MKV, Compatible MP4, MP3 320, FLAC, Podcast,
-iPhone ringtone, Android ringtone, Album split, Ad-free, Shrink for sharing, Archive) plus your own. Settings persist
+**Presets** — thirteen built-ins (Best MKV, Compatible MP4, MP3 320, FLAC, Podcast,
+iPhone ringtone, iPhone text tone, Android ringtone, Android notification sound, Album split, Ad-free, Shrink for sharing, Archive) plus your own. Settings persist
 between launches.
 
 ## Notes

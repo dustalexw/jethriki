@@ -10,11 +10,12 @@ public sealed class IPhoneDialog : Form {
     readonly Button send = new() { Text = "Send", AutoSize = true, Enabled = false }, refresh = new() { Text = "Refresh", AutoSize = true }, restart = new() { Text = "Restart iPhone", AutoSize = true, Visible = false };
     readonly Label empty, status = new() { AutoSize = true, MaximumSize = new Size(440, 0), Margin = new Padding(0, 4, 0, 0) }, downloads = new() { AutoSize = true, Tag = "secondary" };
     readonly Action<string>? log;
+    readonly bool notification;
     RingtoneShare? share;
     IPhoneDevice? sentTo; bool busy, listing;
 
-    public IPhoneDialog(string path, Action<string>? log = null) {
-        this.path = path; this.log = log;
+    public IPhoneDialog(string path, Action<string>? log = null, bool notification = false) {
+        this.path = path; this.log = log; this.notification = notification;
         SuspendLayout(); AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
         Text = "Send to iPhone"; Font = new Font("Segoe UI", 10); FormBorderStyle = FormBorderStyle.FixedDialog; MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent; AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink; KeyPreview = true;
@@ -86,7 +87,7 @@ public sealed class IPhoneDialog : Form {
         try {
             string name = await IPhone.InstallRingtoneAsync(device, path, null, log, closing.Token);
             if (IsDisposed) return;
-            sentTo = device; SetBusy(false, $"Added “{name}”. It appears in Settings › Sounds after the iPhone restarts."); restart.Visible = true;
+            sentTo = device; SetBusy(false, notification ? $"Added “{name}”. After the iPhone restarts, pick it in Settings › Sounds & Haptics › Text Tone." : $"Added “{name}”. It appears in Settings › Sounds after the iPhone restarts."); restart.Visible = true;
         } catch (OperationCanceledException) { return; }
         catch (Exception error) { if (!IsDisposed) { SetBusy(false); status.ForeColor = Color.Firebrick; status.Text = Message(error); } }
     }
