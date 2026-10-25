@@ -49,7 +49,7 @@ public static class Theme {
     public static class Glyph {
         public const string Link = "", Paste = "", Search = "", Close = "", Download = "", Folder = "", Copy = "",
             Retry = "", Delete = "", Log = "", Clock = "", Check = "", Warning = "", Stop = "", Gear = "",
-            Sliders = "", Comment = "", Chevron = "", Sync = "", Bolt = "", Sun = "", Moon = "", Monitor = "", ClearAll = "";
+            Sliders = "", Comment = "", Chevron = "", Sync = "", Bolt = "", Sun = "", Moon = "", Monitor = "", ClearAll = "", Phone = "\uE8EA";
     }
     public static (string Glyph, Color[] Colors) Category(string category) => category switch {
         "Format & quality" => ("", [Pink, Violet]),

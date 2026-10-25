@@ -19,7 +19,7 @@ public sealed class MainForm : Form {
     readonly CardPanel pill = new() { Anchor = AnchorStyles.Left | AnchorStyles.Right, Radius = 22, Margin = new Padding(0, 0, 0, 0) };
     readonly Segmented mode;
     readonly ChipLabel summary = new();
-    readonly IconButton analyze, clearLinks, cancelJob, retryJob, revealJob, logJob;
+    readonly IconButton analyze, clearLinks, cancelJob, retryJob, revealJob, logJob, sendJob;
     readonly ChipButton findComments, cancelSearch;
     readonly GlowButton download = new("Download");
     readonly Panel emptyQueue = new() { Dock = DockStyle.Fill };
@@ -143,7 +143,8 @@ public sealed class MainForm : Form {
         logJob = IconBtn(Theme.Glyph.Log, "View log", ShowLog, 30); revealJob = IconBtn(Theme.Glyph.Folder, "Show files", RevealFiles, 30);
         retryJob = IconBtn(Theme.Glyph.Retry, "Retry", () => { if (SelectedJob() is { } j) queue.Retry(j); }, 30);
         cancelJob = IconBtn(Theme.Glyph.Close, "Cancel", () => { if (SelectedJob() is { } j) queue.Cancel(j); }, 30);
-        jobActions.Controls.AddRange([logJob, revealJob, retryJob, cancelJob]);
+        sendJob = IconBtn(Theme.Glyph.Phone, "Send to iPhone", SendToIPhone, 30);
+        jobActions.Controls.AddRange([logJob, revealJob, sendJob, retryJob, cancelJob]);
         queueLayout.Controls.Add(jobActions, 0, 3);
         queueCard.Controls.Add(queueLayout); body.Controls.Add(queueCard, 1, 0);
         root.Controls.Add(body, 0, 2);
@@ -255,6 +256,7 @@ public sealed class MainForm : Form {
     void UpdateJobActions() {
         var job = SelectedJob();
         logJob.Enabled = job != null; revealJob.Enabled = job != null && (job.OutputFiles.Length > 0 || job.Done);
+        sendJob.Enabled = RingtoneFile(job) != null;
         retryJob.Enabled = job?.Done == true; cancelJob.Enabled = job != null && !job.Done;
     }
     void SyncJobs() {
@@ -351,6 +353,7 @@ public sealed class MainForm : Form {
         var menu = new ContextMenuStrip();
         menu.Items.Add("View log", null, (_, _) => ShowLog());
         menu.Items.Add("Show files", null, (_, _) => RevealFiles());
+        menu.Items.Add("Send to iPhone…", null, (_, _) => SendToIPhone());
         menu.Items.Add("Copy link", null, (_, _) => { if (SelectedJob() is { } j) Clipboard.SetText(j.Url); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Retry", null, (_, _) => { if (SelectedJob() is { } j) queue.Retry(j); });
@@ -416,6 +419,11 @@ public sealed class MainForm : Form {
         var text = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, BorderStyle = BorderStyle.None, Font = new Font("Consolas", 9), Text = string.Join(Environment.NewLine, job.Log.ToArray()) }; dialog.Controls.Add(text);
         Theme.StyleDialog(dialog);
         using var refresh = new System.Windows.Forms.Timer { Interval = 500 }; refresh.Tick += (_, _) => { if (job.Active) { text.Text = string.Join(Environment.NewLine, job.Log.ToArray()); text.SelectionStart = text.Text.Length; text.ScrollToCaret(); } }; refresh.Start(); dialog.ShowDialog(this);
+    }
+    static string? RingtoneFile(DownloadJob? job) => job is { Done: true } ? job.OutputFiles.FirstOrDefault(f => f.EndsWith(".m4r", StringComparison.OrdinalIgnoreCase) && File.Exists(f)) : null;
+    void SendToIPhone() {
+        var job = SelectedJob(); if (RingtoneFile(job) is not { } file || job == null) { footer.Text = "Send to iPhone needs a finished .m4r ringtone. Download with the iPhone ringtone preset."; return; }
+        using var dialog = new IPhoneDialog(file, line => job.AddLog(line)); dialog.ShowDialog(this);
     }
     void OpenFolder(string path) { try { Directory.CreateDirectory(path); Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); } catch (Exception error) { Error(error); } }
     void Error(Exception error) { if (!IsDisposed) { footer.Text = error.Message; MessageBox.Show(this, error.Message, "Jethriki", MessageBoxButtons.OK, MessageBoxIcon.Error); } }

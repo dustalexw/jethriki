@@ -73,6 +73,18 @@ struct JobRow: View {
     @ObservedObject var job: DownloadJob
     @EnvironmentObject private var downloads: DownloadManager
     @State private var showLog = false
+    @State private var sendPath: String?
+
+    /// The finished ringtone file, if this job made one that still exists.
+    private var ringtoneFile: String? {
+        switch job.status {
+        case .finished, .warning: break
+        default: return nil
+        }
+        return job.outputFiles.first {
+            URL(fileURLWithPath: $0).pathExtension.lowercased() == Ringtone.fileExtension && FileManager.default.fileExists(atPath: $0)
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -107,6 +119,9 @@ struct JobRow: View {
         .popover(isPresented: $showLog, arrowEdge: .leading) {
             LogView(job: job)
         }
+        .sheet(isPresented: Binding(get: { sendPath != nil }, set: { if !$0 { sendPath = nil } })) {
+            if let sendPath { SendToIPhoneView(path: sendPath) }
+        }
         .contextMenu {
             Button("Copy link") {
                 NSPasteboard.general.clearContents()
@@ -114,6 +129,7 @@ struct JobRow: View {
             }
             Button("Show log") { showLog = true }
             if !job.outputFiles.isEmpty { Button("Show in Finder") { downloads.reveal(job) } }
+            if let file = ringtoneFile { Button("Send to iPhone…") { sendPath = file } }
             Divider()
             if job.status.isActive || job.status == .queued { Button("Cancel") { downloads.cancel(job) } }
             if job.status.isDone { Button("Retry") { downloads.retry(job) } }
@@ -168,6 +184,10 @@ struct JobRow: View {
                 if !job.outputFiles.isEmpty {
                     Button { downloads.reveal(job) } label: { Image(systemName: "folder") }
                         .help("Show in Finder")
+                }
+                if let file = ringtoneFile {
+                    Button { sendPath = file } label: { Image(systemName: "iphone") }
+                        .help("Send to iPhone")
                 }
                 Button { downloads.retry(job) } label: { Image(systemName: "arrow.clockwise") }
                     .help("Retry")
