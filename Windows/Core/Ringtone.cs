@@ -9,6 +9,8 @@ public static class Ringtone {
     public const int MaxSeconds = 40;
     /// Seconds a preset ringtone clip lasts by default: under the 30 seconds iOS 26 allows for Use as Ringtone.
     public const int DefaultSeconds = 29;
+    /// Android has no length limit, but a ringtone rarely plays longer than a minute before voicemail.
+    public const int AndroidMaxSeconds = 60, AndroidDefaultSeconds = 30;
     public const double FadeInSeconds = 0.3, FadeOutSeconds = 2.0;
     /// Bitrate used when a VBR quality is chosen, since Apple's own ringtones are constant-bitrate AAC.
     public const string DefaultBitrate = "256k";
@@ -19,11 +21,14 @@ public static class Ringtone {
     /// the source is already AAC (yt-dlp would otherwise stream-copy); fading the reversed clip in fades the
     /// real clip out, whatever length the cut ended up. The user's volume and loudness filters still apply.
     public static List<string> FfmpegArguments(DownloadOptions o) {
-        string bitrate = o.AudioQuality.StartsWith('k') ? o.AudioQuality[1..] + "k" : DefaultBitrate;
-        var chain = new List<string> { "atrim=end=" + MaxSeconds, "asetpts=PTS-STARTPTS" };
+        string? kbps = o.AudioQuality.StartsWith('k') ? o.AudioQuality[1..] + "k" : null;
+        bool android = o.AudioFormat == "android";
+        // Android tones are Ogg Vorbis; VBR quality 6 is about 192 kbps.
+        List<string> codec = android ? ["-c:a", "libvorbis", .. kbps != null ? new[] { "-b:a", kbps } : ["-q:a", "6"]] : ["-c:a", "aac", "-b:a", kbps ?? DefaultBitrate];
+        var chain = new List<string> { "atrim=end=" + (android ? AndroidMaxSeconds : MaxSeconds), "asetpts=PTS-STARTPTS" };
         chain.AddRange(CommandBuilder.FilterChain(o));
         chain.AddRange(["afade=t=in:d=" + N(FadeInSeconds), "areverse", "afade=t=in:d=" + N(FadeOutSeconds), "areverse"]);
-        return ["-c:a", "aac", "-b:a", bitrate, "-af", string.Join(',', chain),
+        return [.. codec, "-af", string.Join(',', chain),
             "-ar", o.SampleRate == "keep" ? "44100" : o.SampleRate[1..], "-ac", o.Channels == "mono" ? "1" : "2"];
     }
 

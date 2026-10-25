@@ -124,6 +124,8 @@ struct AudioOptionsView: View {
                     Hint("Lossless formats don't use a bitrate. Note that converting a lossy source to FLAC doesn't add quality.")
                 } else if o.audioFormat.isRingtone {
                     Hint("Saves an .m4r ringtone ready for iTunes, Apple Devices or Finder: AAC, up to \(Ringtone.maxSeconds) seconds, with a short fade in and out. Use Trim to choose which part of the song plays.")
+                } else if o.audioFormat.isAndroidRingtone {
+                    Hint("Saves an Ogg Vorbis ringtone, the format Android's own tones use: up to \(Ringtone.androidMaxSeconds) seconds, with a short fade in and out. Copy it to the phone's Ringtones folder, or open it on the phone and choose it in Settings › Sound.")
                 }
             }
             Section("FFmpeg audio filters") {

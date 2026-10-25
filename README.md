@@ -124,6 +124,12 @@ Apple Devices app / iTunes on Windows), or send it straight from Jethriki:
 iOS only lists directly installed tones after a restart, so the dialog offers a **Restart iPhone** button
 (it asks first). The tone then appears under Settings › Sounds › Ringtone.
 
+**Android ringtones** — a separate **Android ringtone (OGG)** audio format and its
+**Android ringtone · OGG** preset save an Ogg Vorbis file, the format Android's own tones use:
+44.1 kHz stereo, about 192 kbps, up to 60 seconds, with a short fade in and out. The preset takes
+the first 30 seconds; use Trim to pick another part. Copy the `.ogg` into the phone's `Ringtones`
+folder over USB (or download it on the phone), then pick it in Settings › Sound › Phone ringtone.
+
 **Trim** — download only a time range, with optional frame-accurate cuts.
 
 **Playlist** — single video vs whole playlist, item ranges like `1-5,8,-3::`, and a
@@ -140,8 +146,8 @@ folders) or your own, safe-ASCII names, overwrite and file-date behavior.
 **Queue** — several downloads at once (configurable), live progress, speed, ETA and
 size, post-processing stage, per-job log, cancel, retry and Show in Finder.
 
-**Presets** — ten built-ins (Best MKV, Compatible MP4, MP3 320, FLAC, Podcast,
-iPhone ringtone, Album split, Ad-free, Shrink for sharing, Archive) plus your own. Settings persist
+**Presets** — eleven built-ins (Best MKV, Compatible MP4, MP3 320, FLAC, Podcast,
+iPhone ringtone, Android ringtone, Album split, Ad-free, Shrink for sharing, Archive) plus your own. Settings persist
 between launches.
 
 ## Notes

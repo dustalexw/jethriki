@@ -27,10 +27,10 @@ public static class CommandBuilder {
         Add("-f", string.IsNullOrWhiteSpace(o.CustomFormat) ? fallback : o.CustomFormat.Trim());
         var sort = Sort(o); if (sort.Length > 0) Add("-S", sort);
         if (o.Mode == "audio") {
-            Add("-x", "--audio-format", o.AudioFormat == "m4r" ? "m4a" : o.AudioFormat);
+            Add("-x", "--audio-format", o.AudioFormat switch { "m4r" => "m4a", "android" => "vorbis", _ => o.AudioFormat });
             if (!new[] { "flac", "alac", "wav" }.Contains(o.AudioFormat)) Add("--audio-quality", o.AudioQuality.StartsWith('q') ? o.AudioQuality[1..] : o.AudioQuality[1..] + "K");
             var filters = AudioFilters(o);
-            if (o.AudioFormat == "m4r") Add("--postprocessor-args", "ExtractAudio+ffmpeg_o:" + string.Join(' ', Ringtone.FfmpegArguments(o)));
+            if (o.AudioFormat is "m4r" or "android") Add("--postprocessor-args", "ExtractAudio+ffmpeg_o:" + string.Join(' ', Ringtone.FfmpegArguments(o)));
             else if (filters.Count > 0 && o.AudioFormat != "best") Add("--postprocessor-args", "ExtractAudio+ffmpeg_o:" + string.Join(' ', filters));
         } else {
             if (o.Mode == "video") Add("--merge-output-format", o.Container);
@@ -42,7 +42,7 @@ public static class CommandBuilder {
         if (o.TrimEnabled) Add("--download-sections", "*" + (string.IsNullOrWhiteSpace(o.TrimStart) ? "0" : o.TrimStart.Trim()) + "-" + (string.IsNullOrWhiteSpace(o.TrimEnd) ? "inf" : o.TrimEnd.Trim()));
         Flag(o.ForcesKeyframes, "--force-keyframes-at-cuts");
         Flag(o.EmbedChapters, "--embed-chapters"); Flag(o.SplitChapters, "--split-chapters");
-        if (o.SplitChapters && o.Mode == "audio" && o.EmbedThumbnail && new[] { "opus", "vorbis", "best" }.Contains(o.AudioFormat)) Add("--postprocessor-args", "SplitChapters+ffmpeg_o:-map -0:v?");
+        if (o.SplitChapters && o.Mode == "audio" && o.EmbedThumbnail && new[] { "opus", "vorbis", "android", "best" }.Contains(o.AudioFormat)) Add("--postprocessor-args", "SplitChapters+ffmpeg_o:-map -0:v?");
         if (!string.IsNullOrWhiteSpace(o.RemoveChaptersRegex)) Add("--remove-chapters", o.RemoveChaptersRegex.Trim());
         var categories = o.SponsorCategories.Where(c => o.SponsorBlockMode != "remove" || (c != "chapter" && c != "poi_highlight")).ToArray();
         if (o.SponsorBlockMode != "off" && categories.Length > 0) Add(o.SponsorBlockMode == "remove" ? "--sponsorblock-remove" : "--sponsorblock-mark", string.Join(',', categories));

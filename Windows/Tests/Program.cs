@@ -173,6 +173,33 @@ try {
         Check(Path.GetFileName(ring40) == "source-video 2.m4r", "Existing ringtone kept; new one numbered: " + Path.GetFileName(ring40));
     } else Check(false, "Uncut ringtone download: " + capped.Stage);
 
+    // Android ringtone preset: Ogg Vorbis, 30 s by default, faded out, kept apart from the iPhone format.
+    var androidPreset = SettingsStore.BuiltIn.Single(p => p.Options.MakesAndroidRingtone);
+    var androidCommand = CommandBuilder.Arguments(androidPreset.Options, ["URL"]);
+    Check(androidCommand[androidCommand.IndexOf("--audio-format") + 1] == "vorbis" && androidCommand.Contains("*00:00:00-00:00:30") && !androidPreset.Options.MakesRingtone
+        && androidCommand.Any(a => a.StartsWith("ExtractAudio+ffmpeg_o:-c:a libvorbis -b:a 192k -af atrim=end=60,")), "Android ringtone preset command");
+    async Task<DownloadJob> DownloadAndroid(Action<DownloadOptions> edit) {
+        var options = androidPreset.Options.Clone(); options.OutputDirectory = Path.Combine(work, "android"); options.ExtraArgs = "--enable-file-urls"; edit(options);
+        var queue = new DownloadQueue(real); queue.Enqueue([ringtoneServer.Url], options);
+        var job = queue.Jobs[0]; await job.Completion.WaitAsync(TimeSpan.FromSeconds(90));
+        if (job.State != JobState.Finished) Console.WriteLine(string.Join('\n', job.Log));
+        return job;
+    }
+    var android30 = await DownloadAndroid(_ => { });
+    if (android30.OutputFiles.FirstOrDefault(File.Exists) is { } androidTone) {
+        var p = await ProbeAudio(androidTone);
+        Check(androidTone.EndsWith(".ogg") && p.Codec == "vorbis" && p.Rate == 44100 && p.Channels == 2 && p.Brand == "ogg" && Math.Abs(p.Duration - 30) < 0.3,
+            $"Android ringtone is 30 s Ogg Vorbis 44.1 kHz stereo ({Path.GetFileName(androidTone)}, {p.Codec}, {p.Duration} s)");
+        var tail = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "info", "-sseof", "-0.1", "-i", androidTone, "-af", "volumedetect", "-f", "null", "-"]);
+        var mid = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "info", "-ss", "15", "-t", "1", "-i", androidTone, "-af", "volumedetect", "-f", "null", "-"]);
+        double Mean(string log) => double.Parse(System.Text.RegularExpressions.Regex.Match(log, @"mean_volume: (-?[\d.]+)").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        Check(Mean(tail.Stderr) < Mean(mid.Stderr) - 15, "Android ringtone fades out at the end");
+    } else Check(false, "Android ringtone download: " + android30.Stage);
+    var androidWhole = await DownloadAndroid(o => { o.TrimEnabled = false; o.OutputDirectory = Path.Combine(work, "android-whole"); });
+    if (androidWhole.OutputFiles.FirstOrDefault(File.Exists) is { } androidLong)
+        Check(Math.Abs((await ProbeAudio(androidLong)).Duration - 50) < 0.3, "Android ringtone keeps a 50 s song whole (cap is 60 s)");
+    else Check(false, "Uncut Android ringtone download: " + androidWhole.Stage);
+
     // Sending to an iPhone over USB and Wi-Fi, against a simulated phone that speaks the real protocols.
     var oldTones = Convert.FromBase64String("YnBsaXN0MDDRAQJZUmluZ3RvbmVz0QMEWFdYWVoubTRy2AUGBwgJCgsMDQ0ODQ8QERJVQWxidW1WQXJ0aXN0VEdVSURVR2VucmVUTmFtZVNQSURfEBFQcm90ZWN0ZWQgQ29udGVudFpUb3RhbCBUaW1lUF8QEDAxMjM0NTY3ODlBQkNERUZYT2xkIFRvbmUTwAAAAAAAAAAIETA5CAsVGCEyOD9ESk9TZ3Jzho+YmQAAAAAAAAEBAAAAAAAAABMAAAAAAAAAAAAAAAAAAACc");
     var oldEntry = (Dictionary<string, object>)((Dictionary<string, object>)Plist.ParseDict(oldTones)["Ringtones"])["WXYZ.m4r"];
