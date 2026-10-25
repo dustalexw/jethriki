@@ -6,6 +6,7 @@ using YtdlpStudio.Core;
 
 // Fixture-tool mode replaces only online extraction; media processing always uses real bundled tools.
 if (args.Contains("--sleep-child")) { await Task.Delay(TimeSpan.FromSeconds(30)); return 0; }
+if (args.Length > 0 && args[0] == "--fake-adb") return FakeAdb.Run(args[1..]);
 if (args.Contains("--fake-iphone")) {
     // Runs the simulated iPhone alone, so other clients can be checked against it. Stops when stdin closes.
     using var phone = new FakeIPhone { AlsoOnWifi = args.Contains("--wifi") };
@@ -173,6 +174,88 @@ try {
         Check(Path.GetFileName(ring40) == "source-video 2.m4r", "Existing ringtone kept; new one numbered: " + Path.GetFileName(ring40));
     } else Check(false, "Uncut ringtone download: " + capped.Stage);
 
+    // Android ringtone preset: Ogg Vorbis, 30 s by default, faded out, kept apart from the iPhone format.
+    var androidPreset = SettingsStore.BuiltIn.Single(p => p.Options.MakesAndroidRingtone);
+    var androidCommand = CommandBuilder.Arguments(androidPreset.Options, ["URL"]);
+    Check(androidCommand[androidCommand.IndexOf("--audio-format") + 1] == "vorbis" && androidCommand.Contains("*00:00:00-00:00:30") && !androidPreset.Options.MakesRingtone
+        && androidCommand.Any(a => a.StartsWith("ExtractAudio+ffmpeg_o:-c:a libvorbis -b:a 192k -af atrim=end=60,")), "Android ringtone preset command");
+    async Task<DownloadJob> DownloadAndroid(Action<DownloadOptions> edit) {
+        var options = androidPreset.Options.Clone(); options.OutputDirectory = Path.Combine(work, "android"); options.ExtraArgs = "--enable-file-urls"; edit(options);
+        var queue = new DownloadQueue(real); queue.Enqueue([ringtoneServer.Url], options);
+        var job = queue.Jobs[0]; await job.Completion.WaitAsync(TimeSpan.FromSeconds(90));
+        if (job.State != JobState.Finished) Console.WriteLine(string.Join('\n', job.Log));
+        return job;
+    }
+    var android30 = await DownloadAndroid(_ => { });
+    if (android30.OutputFiles.FirstOrDefault(File.Exists) is { } androidTone) {
+        var p = await ProbeAudio(androidTone);
+        Check(androidTone.EndsWith(".ogg") && p.Codec == "vorbis" && p.Rate == 44100 && p.Channels == 2 && p.Brand == "ogg" && Math.Abs(p.Duration - 30) < 0.3,
+            $"Android ringtone is 30 s Ogg Vorbis 44.1 kHz stereo ({Path.GetFileName(androidTone)}, {p.Codec}, {p.Duration} s)");
+        var tail = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "info", "-sseof", "-0.1", "-i", androidTone, "-af", "volumedetect", "-f", "null", "-"]);
+        var mid = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "info", "-ss", "15", "-t", "1", "-i", androidTone, "-af", "volumedetect", "-f", "null", "-"]);
+        double Mean(string log) => double.Parse(System.Text.RegularExpressions.Regex.Match(log, @"mean_volume: (-?[\d.]+)").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        Check(Mean(tail.Stderr) < Mean(mid.Stderr) - 15, "Android ringtone fades out at the end");
+
+        // Sending to an Android phone through adb, against a fake adb (this test program in --fake-adb mode).
+        var adbState = Path.Combine(work, "adb-state"); Directory.CreateDirectory(Path.Combine(adbState, "phone"));
+        File.WriteAllText(Path.Combine(adbState, "devices.txt"),
+            "R5CT123ABC            device usb:1-1 product:shiba model:Pixel_8 device:shiba transport_id:1\n192.168.1.5:41234     device product:b0q model:SM_S911B device:b0q transport_id:2\nZY22ABCDEF            unauthorized usb:1-2 transport_id:3\n");
+        string launcher = Path.Combine(work, OperatingSystem.IsWindows() ? "fake-adb.cmd" : "fake-adb");
+        string dll = typeof(FakeIPhone).Assembly.Location, host = Environment.ProcessPath!;
+        bool viaDotnet = Path.GetFileNameWithoutExtension(host).Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+        if (OperatingSystem.IsWindows()) File.WriteAllText(launcher, "@echo off\r\n\"" + host + "\" " + (viaDotnet ? "\"" + dll + "\" " : "") + "--fake-adb %*\r\n");
+        else {
+            File.WriteAllText(launcher, $"#!/bin/sh\nexec \"{host}\" {(viaDotnet ? "\"" + dll + "\" " : "")}--fake-adb \"$@\"\n");
+            File.SetUnixFileMode(launcher, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        string? oldAdb = Environment.GetEnvironmentVariable("JETHRIKI_ADB"), oldPath = Environment.GetEnvironmentVariable("PATH");
+        Environment.SetEnvironmentVariable("JETHRIKI_ADB", launcher); Environment.SetEnvironmentVariable("FAKE_ADB_STATE", adbState);
+        try {
+            Check(Android.FindAdb() == launcher, "JETHRIKI_ADB selects the adb tool");
+            var phones = await Android.ListAsync();
+            Check(phones.Count == 3 && phones[0] == new AndroidDevice("R5CT123ABC", "Pixel 8", false, "device") && phones[0].Ready && phones[0].ToString() == "Pixel 8 · USB", "adb devices: USB phone: " + string.Join(" | ", phones));
+            Check(phones.Count == 3 && phones[1].Wifi && phones[1].Model == "SM S911B" && phones[1].Connection == "Wi-Fi", "adb devices: Wi-Fi phone");
+            Check(phones.Count == 3 && !phones[2].Ready && phones[2].State == "unauthorized" && phones[2].ToString() == "ZY22ABCDEF · USB · allow USB debugging on the phone", "adb devices: unauthorized phone: " + phones.LastOrDefault());
+            string sent = await Android.SendRingtoneAsync(phones[0], androidTone, false, line => Console.WriteLine(line));
+            string onPhone = Path.Combine(adbState, "phone", "Ringtones", Path.GetFileName(androidTone));
+            Check(sent == "/sdcard/Ringtones/" + Path.GetFileName(androidTone) && File.Exists(onPhone) && File.ReadAllBytes(onPhone).SequenceEqual(File.ReadAllBytes(androidTone)), "Android ringtone copied byte for byte into Ringtones");
+            Check(!File.Exists(Path.Combine(adbState, "settings.txt")), "Sending without 'set as ringtone' leaves the phone settings alone");
+            await Android.SendRingtoneAsync(phones[0], androidTone, true);
+            Check(File.Exists(Path.Combine(adbState, "settings.txt")) && File.ReadAllText(Path.Combine(adbState, "settings.txt")).Contains("settings put system ringtone content://media/external/audio/media/42"), "Set as ringtone records the media id");
+            Check(File.ReadAllText(Path.Combine(adbState, "log.txt")).Contains("is_ringtone:i:1"), "Tone is marked as a ringtone");
+            try { await Android.SendRingtoneAsync(phones[2], androidTone, false); Check(false, "Unauthorized phone is refused"); }
+            catch (AndroidException error) { Check(error.Message.Contains("Allow"), "Unauthorized phone gets an Allow hint: " + error.Message); }
+            try { await Android.SendRingtoneAsync(phones[0], Path.Combine(work, "source-video.mp4"), false); Check(false, "Non-audio file refused for Android"); }
+            catch (AndroidException) { Check(true, "Non-audio file refused for Android"); }
+            await Android.PairAsync("192.168.1.5:37000", "123456"); Check(File.ReadAllText(Path.Combine(adbState, "log.txt")).Contains("pair 192.168.1.5:37000 123456"), "Pairing runs adb pair");
+            await Android.ConnectAsync("192.168.1.5:41234");
+            try { await Android.ConnectAsync("bad:1"); Check(false, "Failed connect reported"); }
+            catch (AndroidException error) { Check(error.Message.Contains("bad:1"), "Failed connect reported: " + error.Message); }
+            Environment.SetEnvironmentVariable("JETHRIKI_ADB", Path.Combine(work, "no-such-adb")); Environment.SetEnvironmentVariable("PATH", Path.Combine(work, "empty"));
+            Environment.SetEnvironmentVariable("ANDROID_HOME", null); Environment.SetEnvironmentVariable("ANDROID_SDK_ROOT", null);
+            if (Android.FindAdb() == null) {
+                try { await Android.ListAsync(); Check(false, "Missing adb reported"); }
+                catch (AndroidException error) { Check(error.Message.Contains("Platform Tools"), "Missing adb points to Platform Tools"); }
+            } else Console.WriteLine("SKIP missing-adb check: adb is installed in a fixed location");
+        } finally {
+            Environment.SetEnvironmentVariable("JETHRIKI_ADB", oldAdb); Environment.SetEnvironmentVariable("PATH", oldPath); Environment.SetEnvironmentVariable("FAKE_ADB_STATE", null);
+        }
+        Check(Math.Abs((Ogg.DurationSeconds(File.ReadAllBytes(androidTone)) ?? 0) - 30) < 0.3, "Android ringtone length read from the Ogg pages");
+        Check(Ogg.DurationSeconds([1, 2, 3]) == null, "Ogg reader rejects other files");
+        if (RingtoneShare.LocalAddress() != null) {
+            using var androidShare = RingtoneShare.Start(androidTone); using var androidHttp = new HttpClient();
+            string androidName = Path.GetFileName(androidTone);
+            var androidPage = await androidHttp.GetStringAsync(androidShare.Url);
+            Check(androidShare.ForAndroid && !androidShare.TooLongForShare && androidPage.Contains("Phone ringtone") && androidPage.Contains(Uri.EscapeDataString(androidName)), "Android share serves an Android page");
+            using var oggResponse = await androidHttp.GetAsync(androidShare.Url + androidName.Replace(" ", "%20"));
+            Check(oggResponse.Content.Headers.ContentType?.MediaType == "audio/ogg" && (await oggResponse.Content.ReadAsByteArrayAsync()).SequenceEqual(File.ReadAllBytes(androidTone)), "Android share serves the .ogg bytes");
+        }
+    } else Check(false, "Android ringtone download: " + android30.Stage);
+    var androidWhole = await DownloadAndroid(o => { o.TrimEnabled = false; o.OutputDirectory = Path.Combine(work, "android-whole"); });
+    if (androidWhole.OutputFiles.FirstOrDefault(File.Exists) is { } androidLong)
+        Check(Math.Abs((await ProbeAudio(androidLong)).Duration - 50) < 0.3, "Android ringtone keeps a 50 s song whole (cap is 60 s)");
+    else Check(false, "Uncut Android ringtone download: " + androidWhole.Stage);
+
     // Sending to an iPhone over USB and Wi-Fi, against a simulated phone that speaks the real protocols.
     var oldTones = Convert.FromBase64String("YnBsaXN0MDDRAQJZUmluZ3RvbmVz0QMEWFdYWVoubTRy2AUGBwgJCgsMDQ0ODQ8QERJVQWxidW1WQXJ0aXN0VEdVSURVR2VucmVUTmFtZVNQSURfEBFQcm90ZWN0ZWQgQ29udGVudFpUb3RhbCBUaW1lUF8QEDAxMjM0NTY3ODlBQkNERUZYT2xkIFRvbmUTwAAAAAAAAAAIETA5CAsVGCEyOD9ESk9TZ3Jzho+YmQAAAAAAAAEBAAAAAAAAABMAAAAAAAAAAAAAAAAAAACc");
     var oldEntry = (Dictionary<string, object>)((Dictionary<string, object>)Plist.ParseDict(oldTones)["Ringtones"])["WXYZ.m4r"];
@@ -276,4 +359,40 @@ sealed class LocalMediaServer : IDisposable {
         }
     }
     public void Dispose() { cancellation.Cancel(); listener.Stop(); cancellation.Dispose(); }
+}
+
+/// Stands in for Google's adb: the test program relaunched with --fake-adb. State lives in $FAKE_ADB_STATE
+/// (devices.txt, a phone/ folder standing in for /storage/emulated/0 and /sdcard, log.txt, settings.txt).
+static class FakeAdb {
+    public static int Run(string[] args) {
+        string state = Environment.GetEnvironmentVariable("FAKE_ADB_STATE")!, phone = Path.Combine(state, "phone");
+        File.AppendAllText(Path.Combine(state, "log.txt"), string.Join(' ', args) + "\n");
+        if (args is ["devices", "-l"]) { Console.WriteLine("List of devices attached\n" + File.ReadAllText(Path.Combine(state, "devices.txt"))); return 0; }
+        if (args is ["pair", var pairHost, _]) { Console.WriteLine("Successfully paired to " + pairHost + " [guid=adb-test]"); return 0; }
+        if (args is ["connect", var host]) {
+            if (host.StartsWith("bad")) Console.WriteLine("failed to connect to '" + host + "': Connection refused"); else Console.WriteLine("connected to " + host);
+            return 0;
+        }
+        if (args.Length >= 3 && args[0] == "-s") {
+            string Local(string remote) => Path.Combine(phone, remote.Replace("/storage/emulated/0", "").Replace("/sdcard", "").TrimStart('/'));
+            if (args[2] == "push" && args.Length == 5) {
+                Directory.CreateDirectory(Path.GetDirectoryName(Local(args[4]))!); File.Copy(args[3], Local(args[4]), true);
+                Console.WriteLine(args[3] + ": 1 file pushed."); return 0;
+            }
+            if (args[2] == "shell" && args.Length == 4) {
+                string command = args[3];
+                if (command.StartsWith("mkdir -p ")) { Directory.CreateDirectory(Local(command[9..].Trim('\''))); return 0; }
+                if (command.StartsWith("am broadcast")) { Console.WriteLine("Broadcast completed: result=0"); return 0; }
+                if (command.StartsWith("content query")) {
+                    string folder = Path.Combine(phone, "Ringtones");
+                    if (Directory.Exists(folder) && Directory.GetFiles(folder).Any(f => command.Contains("'" + Path.GetFileName(f) + "'"))) Console.WriteLine("Row: 0 _id=42");
+                    else Console.WriteLine("No result found.");
+                    return 0;
+                }
+                if (command.StartsWith("content update")) { Console.WriteLine("Result: rows_affected=1"); return 0; }
+                if (command.StartsWith("settings put ")) { File.AppendAllText(Path.Combine(state, "settings.txt"), command + "\n"); return 0; }
+            }
+        }
+        Console.Error.WriteLine("fake adb: unsupported " + string.Join(' ', args)); return 1;
+    }
 }

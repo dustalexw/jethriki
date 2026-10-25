@@ -146,6 +146,20 @@ final class OptionsStore: ObservableObject {
                 o.embedChapters = false
                 o.playlistMode = .single
             },
+            make("Android ringtone · OGG") { o in
+                o.mode = .audio
+                o.audioFormat = .android
+                o.audioQuality = .k192
+                o.sampleRate = .r44100
+                o.channels = .stereo
+                // Only the first 30 s are downloaded; change Trim to pick another part of the song.
+                o.trimEnabled = true
+                o.trimStart = "00:00:00"
+                o.trimEnd = "00:00:\(Ringtone.androidDefaultSeconds)"
+                o.embedThumbnail = false
+                o.embedChapters = false
+                o.playlistMode = .single
+            },
             make("Album · split chapters to MP3") { o in
                 o.mode = .audio
                 o.audioFormat = .mp3

@@ -252,6 +252,79 @@ do {
             long.stop()
         }
     } else { check(false, "share starts on the local network") }
+
+    section("Android ringtone: Ogg length, share page, adb")
+    let ogg = outRoot + "/tone.ogg"
+    _ = runSync("/usr/bin/env", ["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=5", "-c:a", "libvorbis", ogg])
+    let oggData = FileManager.default.contents(atPath: ogg) ?? Data()
+    check(abs((Ogg.durationSeconds(oggData) ?? 0) - 5) < 0.2, "length read from the Ogg pages (\(Ogg.durationSeconds(oggData) ?? -1) s)")
+    check(Ogg.durationSeconds(tone) == nil, "an AAC file is not read as Ogg")
+    if let share = try? RingtoneShare(path: ogg) {
+        func curl(_ args: [String]) -> ProcessResult { runSync("/usr/bin/env", ["curl", "-s"] + args) }
+        let page = curl([share.url.absoluteString]).stdout
+        check(share.forAndroid && !share.tooLongForShare && page.contains("Phone ringtone") && page.contains("tone.ogg") && !page.contains("Use as Ringtone"),
+              "Android share page")
+        let out = outRoot + "/shared.ogg"
+        _ = curl(["-o", out, share.url.absoluteString + "tone.ogg"])
+        check(FileManager.default.contents(atPath: out) == oggData, "share serves the .ogg byte for byte")
+        check(curl(["-D", "-", "-o", "/dev/null", share.url.absoluteString + "tone.ogg"]).stdout.lowercased().contains("content-type: audio/ogg"), "share serves audio/ogg")
+        share.stop()
+    } else { check(false, "Android share starts on the local network") }
+
+    let sample = """
+    List of devices attached
+    * daemon started successfully
+    R58M123ABC             device usb:1-1 product:panther model:Pixel_7 device:panther transport_id:1
+    192.168.1.20:37045     device product:x model:SM_S918B device:y transport_id:2
+    adb-XYZ123-abcd._adb-tls-connect._tcp device product:z model:Pixel_8 device:w transport_id:3
+    0123456789ABCDEF       unauthorized usb:1-2 transport_id:4
+    emulator-5554          offline
+
+    """
+    let devs = AndroidSync.parseDevices(sample)
+    check(devs.count == 5 && devs[0].model == "Pixel 7" && devs[0].ready && !devs[0].wifi
+          && devs[1].wifi && devs[1].model == "SM S918B" && devs[2].wifi
+          && devs[3].state == "unauthorized" && !devs[3].ready && !devs[4].wifi && devs[4].model == "",
+          "adb devices -l output parsed", "\(devs)")
+
+    let phone = outRoot + "/fakephone"
+    try? FileManager.default.createDirectory(atPath: phone, withIntermediateDirectories: true)
+    let fakeAdb = outRoot + "/fake-adb"
+    let script = """
+    #!/bin/bash
+    PHONE="\(phone)"
+    if [ "$1" = "-s" ]; then shift 2; fi
+    case "$1" in
+      devices) printf 'List of devices attached\nR58M123ABC device usb:1-1 model:Pixel_7 transport_id:1\n\n' ;;
+      push) mkdir -p "$PHONE"; cp "$2" "$PHONE/$(basename "$3")"; echo "1 file pushed" ;;
+      shell)
+        echo "$2" >> "$PHONE/shell.log"
+        case "$2" in
+          "content query"*) echo "Row: 0 _id=42" ;;
+          "settings put"*) echo "$2" >> "$PHONE/settings.log" ;;
+        esac ;;
+      connect) echo "failed to connect to '$2': Connection refused" ;;
+    esac
+    exit 0
+    """
+    try? script.write(toFile: fakeAdb, atomically: true, encoding: .utf8)
+    chmod(fakeAdb, 0o755)
+    setenv("JETHRIKI_ADB", fakeAdb, 1)
+    check(AndroidSync.findAdb() == fakeAdb, "JETHRIKI_ADB selects adb")
+    let listed = (try? blocking { try await AndroidSync.list() }.get()) ?? []
+    check(listed.count == 1 && listed[0].serial == "R58M123ABC", "list() runs adb devices -l", "\(listed)")
+    if let target = listed.first {
+        let sent = blocking { try await AndroidSync.sendRingtone(path: ogg, to: target, setAsRingtone: true) }
+        check((try? sent.get()) == "tone" && FileManager.default.contents(atPath: phone + "/tone.ogg") == oggData, "sendRingtone copies the tone to the phone", "\(sent)")
+        let settings = (try? String(contentsOfFile: phone + "/settings.log", encoding: .utf8)) ?? ""
+        check(settings.contains("settings put system ringtone content://media/external/audio/media/42"), "sendRingtone sets the ringtone from the media id", settings)
+        let bad = AndroidTarget(serial: "X", model: "", wifi: false, state: "unauthorized")
+        let denied = blocking { try await AndroidSync.sendRingtone(path: ogg, to: bad, setAsRingtone: false) }
+        check({ if case .failure(let e) = denied { return e.localizedDescription.contains("tap Allow") }; return false }(), "unauthorized phone gets the Allow hint")
+    }
+    let refused = blocking { try await AndroidSync.connect(hostPort: "10.0.0.9:5555") }
+    check({ if case .failure = refused { return true }; return false }(), "connect reports 'failed to connect' even with exit 0")
+    unsetenv("JETHRIKI_ADB")
 }
 
 section("E2E: FFmpeg re-encode pass, every software encoder, downscale + loudnorm")

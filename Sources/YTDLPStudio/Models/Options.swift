@@ -154,7 +154,7 @@ enum FPSLimit: String, OptionEnum {
 // MARK: - Audio
 
 enum AudioFormat: String, OptionEnum {
-    case best, mp3, m4a, aac, opus, vorbis, flac, alac, wav, m4r
+    case best, mp3, m4a, aac, opus, vorbis, flac, alac, wav, m4r, android
     var label: String {
         switch self {
         case .best: return "Best (keep original codec)"
@@ -167,6 +167,7 @@ enum AudioFormat: String, OptionEnum {
         case .alac: return "ALAC (Apple lossless)"
         case .wav: return "WAV (uncompressed)"
         case .m4r: return "iPhone ringtone (M4R)"
+        case .android: return "Android ringtone (OGG)"
         }
     }
     var isLossless: Bool { [.flac, .alac, .wav].contains(self) }
@@ -174,7 +175,23 @@ enum AudioFormat: String, OptionEnum {
     var isRingtone: Bool { self == .m4r }
     /// The codec handed to yt-dlp's --audio-format. yt-dlp has no M4R target, so a ringtone is
     /// written as M4A (the same container) and the app renames it to .m4r once it is finished.
-    var ytdlpFormat: String { self == .m4r ? AudioFormat.m4a.rawValue : rawValue }
+    var ytdlpFormat: String {
+        switch self {
+        case .m4r: return AudioFormat.m4a.rawValue
+        case .android: return AudioFormat.vorbis.rawValue
+        default: return rawValue
+        }
+    }
+    /// An Android ringtone: Ogg Vorbis, the format Android's own tones use, at most a minute long.
+    var isAndroidRingtone: Bool { self == .android }
+    /// The longest clip a ringtone format keeps, or nil for ordinary audio.
+    var ringtoneMaxSeconds: Int? {
+        switch self {
+        case .m4r: return Ringtone.maxSeconds
+        case .android: return Ringtone.androidMaxSeconds
+        default: return nil
+        }
+    }
     /// Prefer a source stream that already matches, so no lossy-to-lossy transcode is needed.
     var preferredSourceSort: String? {
         switch self {
@@ -190,6 +207,9 @@ enum Ringtone {
     static let fileExtension = "m4r"
     /// iOS rejects ringtones longer than 40 seconds; the app enforces this whatever the trim settings.
     static let maxSeconds = 40
+    /// Android has no length limit, but a ringtone rarely plays longer than a minute before voicemail.
+    static let androidMaxSeconds = 60
+    static let androidDefaultSeconds = 30
     /// Seconds a preset ringtone clip lasts by default: under the 30 seconds iOS 26 allows for Use as Ringtone.
     static let defaultSeconds = 29
     static let fadeInSeconds = 0.3

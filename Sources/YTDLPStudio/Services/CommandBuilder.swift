@@ -39,7 +39,7 @@ enum CommandBuilder {
             a += ["-x", "--audio-format", o.audioFormat.ytdlpFormat]
             if !o.audioFormat.isLossless { a += ["--audio-quality", o.audioQuality.arg] }
             let af = audioFilterArgs(o)
-            if o.audioFormat.isRingtone {
+            if o.audioFormat.ringtoneMaxSeconds != nil {
                 a += ["--postprocessor-args", "ExtractAudio+ffmpeg_o:" + ringtoneArgs(o).joined(separator: " ")]
             } else if !af.isEmpty && o.audioFormat != .best {
                 a += ["--postprocessor-args", "ExtractAudio+ffmpeg_o:" + af.joined(separator: " ")]
@@ -70,7 +70,7 @@ enum CommandBuilder {
             a.append("--split-chapters")
             // Ogg (Opus/Vorbis) can't hold a picture stream, so splitting a file that already has
             // embedded cover art fails. Drop the picture while splitting; the app re-adds it per track.
-            let oggLike: Set<AudioFormat> = [.opus, .vorbis, .best]
+            let oggLike: Set<AudioFormat> = [.opus, .vorbis, .android, .best]
             if o.mode == .audio && o.embedThumbnail && oggLike.contains(o.audioFormat) {
                 a += ["--postprocessor-args", "SplitChapters+ffmpeg_o:-map -0:v?"]
             }
@@ -250,14 +250,18 @@ enum CommandBuilder {
     /// would otherwise stream-copy), capped at 40 s, short fade-in, fade-out at the real end,
     /// 44.1 kHz stereo unless the user picked otherwise. The user's volume/loudness filters still apply.
     static func ringtoneArgs(_ o: DownloadOptions) -> [String] {
-        let bitrate = o.audioQuality.arg.hasSuffix("K")
-            ? o.audioQuality.arg.lowercased() : Ringtone.defaultBitrate
+        let kbps = o.audioQuality.arg.hasSuffix("K") ? o.audioQuality.arg.lowercased() : nil
+        // Android tones are Ogg Vorbis; VBR quality 6 is about 192 kbps.
+        let codec = o.audioFormat.isAndroidRingtone
+            ? ["-c:a", "libvorbis"] + (kbps.map { ["-b:a", $0] } ?? ["-q:a", "6"])
+            : ["-c:a", "aac", "-b:a", kbps ?? Ringtone.defaultBitrate]
+        let cap = o.audioFormat.ringtoneMaxSeconds ?? Ringtone.maxSeconds
         // Fading the reversed clip in fades the real clip out, whatever length the cut ended up.
-        let chain = ["atrim=end=\(Ringtone.maxSeconds)", "asetpts=PTS-STARTPTS"] + audioFilters(o) + [
+        let chain = ["atrim=end=\(cap)", "asetpts=PTS-STARTPTS"] + audioFilters(o) + [
             "afade=t=in:d=\(Ringtone.fadeInSeconds)",
             "areverse", "afade=t=in:d=\(Ringtone.fadeOutSeconds)", "areverse"
         ]
-        return ["-c:a", "aac", "-b:a", bitrate, "-af", chain.joined(separator: ","),
+        return codec + ["-af", chain.joined(separator: ","),
                 "-ar", "\(o.sampleRate.value ?? 44100)", "-ac", "\(o.channels.value ?? 2)"]
     }
 
