@@ -29,7 +29,7 @@ public sealed class MainWindow : Window {
     TextBox urls = null!, command = null!;
     TextBlock footer = null!, commandNote = null!, summary = null!, queueCount = null!;
     Border queueBadge = null!, emptyQueue = null!;
-    Button download = null!, analyze = null!, findComments = null!, cancelSearch = null!, clearLinks = null!, logJob = null!, sendJob = null!, revealJob = null!, retryJob = null!, cancelJob = null!;
+    Button download = null!, analyze = null!, findComments = null!, cancelSearch = null!, clearLinks = null!, logJob = null!, sendJob = null!, sendAndroid = null!, revealJob = null!, retryJob = null!, cancelJob = null!;
     Button[] modeButtons = [];
     ListBox jobs = null!;
     OptionsView options = null!;
@@ -140,14 +140,14 @@ public sealed class MainWindow : Window {
         jobs.ContextMenu = JobMenu();
         emptyQueue = EmptyQueue();
         logJob = IconButton(Icons.Log, "View log", ShowLog, 30); revealJob = IconButton(Icons.Folder, "Show files", RevealFiles, 30);
-        sendJob = IconButton(Icons.Phone, "Send to iPhone", SendToIPhone, 30);
+        sendJob = IconButton(Icons.Phone, "Send to iPhone", SendToIPhone, 30); sendAndroid = IconButton(Icons.Phone, "Send to Android", SendToAndroid, 30);
         retryJob = IconButton(Icons.Retry, "Retry", () => { if (SelectedJob() is { } j) queue.Retry(j); }, 30);
         cancelJob = IconButton(Icons.Close, "Cancel", () => { if (SelectedJob() is { } j) queue.Cancel(j); }, 30);
         var queueGrid = new Grid { RowDefinitions = new RowDefinitions("Auto,1,*,Auto") };
         queueGrid.Children.Add(queueHeader);
         queueGrid.Children.Add(Row(new Border { Background = Look.B(p.Hairline) }, 1));
         queueGrid.Children.Add(Row(new Panel { Margin = new Thickness(0, 4), Children = { jobs, emptyQueue } }, 2));
-        queueGrid.Children.Add(Row(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(4, 2, 0, 0), Children = { logJob, revealJob, sendJob, retryJob, cancelJob } }, 3));
+        queueGrid.Children.Add(Row(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(4, 2, 0, 0), Children = { logJob, revealJob, sendJob, sendAndroid, retryJob, cancelJob } }, 3));
         body.Children.Add(Cell(Look.Card(queueGrid), 1));
         root.Children.Add(Row(body, 2));
 
@@ -232,7 +232,7 @@ public sealed class MainWindow : Window {
     void UpdateJobActions() {
         var job = SelectedJob();
         logJob.IsEnabled = job != null; revealJob.IsEnabled = job != null && (job.OutputFiles.Length > 0 || job.Done);
-        sendJob.IsEnabled = RingtoneFile(job) != null;
+        sendJob.IsEnabled = RingtoneFile(job) != null; sendAndroid.IsEnabled = AndroidRingtoneFile(job) != null;
         retryJob.IsEnabled = job?.Done == true; cancelJob.IsEnabled = job != null && !job.Done;
     }
     void SyncJobs() {
@@ -259,7 +259,7 @@ public sealed class MainWindow : Window {
     ContextMenu JobMenu() {
         MenuItem Item(string header, Action action) { var m = new MenuItem { Header = header }; m.Click += (_, _) => action(); return m; }
         return new ContextMenu { ItemsSource = new Control[] {
-            Item("View log", ShowLog), Item("Show files", RevealFiles), Item("Send to iPhone…", SendToIPhone),
+            Item("View log", ShowLog), Item("Show files", RevealFiles), Item("Send to iPhone…", SendToIPhone), Item("Send to Android…", SendToAndroid),
             Item("Copy link", () => { if (SelectedJob() is { } j) _ = Clipboard?.SetTextAsync(j.Url); }), new Separator(),
             Item("Retry", () => { if (SelectedJob() is { } j) queue.Retry(j); }), Item("Cancel", () => { if (SelectedJob() is { } j) queue.Cancel(j); }) } };
     }
@@ -322,6 +322,12 @@ public sealed class MainWindow : Window {
         catch (Exception error) { _ = Error(error); }
     }
     static string? RingtoneFile(DownloadJob? job) => job is { Done: true } ? job.OutputFiles.FirstOrDefault(f => f.EndsWith(".m4r", StringComparison.OrdinalIgnoreCase) && File.Exists(f)) : null;
+    static string? AndroidRingtoneFile(DownloadJob? job) => job is { Done: true } ? job.OutputFiles.FirstOrDefault(f => f.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) && File.Exists(f)) : null;
+    void SendToAndroid() {
+        var job = SelectedJob();
+        if (job == null || AndroidRingtoneFile(job) is not { } file) { footer.Text = "Send to Android needs a finished .ogg ringtone. Download with the Android ringtone preset."; return; }
+        _ = new AndroidWindow(file, job.AddLog).ShowDialog(this);
+    }
     void SendToIPhone() {
         var job = SelectedJob();
         if (job == null || RingtoneFile(job) is not { } file) { footer.Text = "Send to iPhone needs a finished .m4r ringtone. Download with the iPhone ringtone preset."; return; }

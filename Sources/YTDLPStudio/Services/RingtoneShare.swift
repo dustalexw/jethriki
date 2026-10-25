@@ -30,6 +30,29 @@ enum MP4 {
     }
 }
 
+/// Reads the duration of an Ogg Vorbis file: the sample rate from the identification header in the first page,
+/// and the granule position (total samples) of the last page.
+enum Ogg {
+    static func durationSeconds(_ data: Data) -> Double? {
+        let b = [UInt8](data)
+        let magic: [UInt8] = [0x4F, 0x67, 0x67, 0x53]   // "OggS"
+        guard b.count > 64, Array(b[0..<4]) == magic else { return nil }
+        let payload = 27 + Int(b[26])
+        guard payload + 16 <= b.count, b[payload] == 0x01, Array(b[(payload + 1)..<(payload + 7)]) == Array("vorbis".utf8) else { return nil }
+        let rate = (0..<4).reduce(UInt32(0)) { $0 | (UInt32(b[payload + 12 + $1]) << (8 * UInt32($1))) }
+        guard rate > 0 else { return nil }
+        var at = b.count - 27
+        while at > 0 {
+            if b[at] == magic[0], b[at + 1] == magic[1], b[at + 2] == magic[2], b[at + 3] == magic[3] {
+                let granule = (0..<8).reduce(UInt64(0)) { $0 | (UInt64(b[at + 6 + $1]) << (8 * UInt64($1))) }
+                return granule == UInt64.max ? nil : Double(granule) / Double(rate)
+            }
+            at -= 1
+        }
+        return nil
+    }
+}
+
 /// Edits the iPhone's /iTunes_Control/iTunes/Ringtones.plist:
 /// { "Ringtones": { "ABCD.m4r": { "Name": …, "Total Time": ms, … } } }. A tone with the same name is replaced.
 enum RingtoneList {
@@ -79,7 +102,9 @@ final class RingtoneShare {
     static let maxSeconds = 30.0
     let url: URL
     let seconds: Double
-    var tooLongForShare: Bool { seconds >= Self.maxSeconds }
+    /// True for an Android .ogg tone, which gets its own download page and has no length limit here.
+    let forAndroid: Bool
+    var tooLongForShare: Bool { !forAndroid && seconds >= Self.maxSeconds }
     private(set) var downloads = 0
     var onDownload: (() -> Void)?
 
@@ -90,15 +115,16 @@ final class RingtoneShare {
 
     init(path: String) throws {
         guard let data = FileManager.default.contents(atPath: path) else { throw RingtoneError("Couldn't read \((path as NSString).lastPathComponent).") }
-        guard let seconds = MP4.durationSeconds(data) else {
-            throw RingtoneError("\((path as NSString).lastPathComponent) is not an AAC ringtone. Download it with the iPhone ringtone preset first.")
+        let android = (path as NSString).pathExtension.lowercased() == "ogg"
+        guard let seconds = android ? Ogg.durationSeconds(data) : MP4.durationSeconds(data) else {
+            throw RingtoneError("\((path as NSString).lastPathComponent) is not a ringtone Jethriki can share. Download it with the iPhone or Android ringtone preset first.")
         }
         guard let address = Self.localAddress() else { throw RingtoneError("This Mac isn't on a network. Connect it to the same Wi-Fi as your iPhone.") }
-        audio = [UInt8](data); self.seconds = seconds
+        audio = [UInt8](data); self.seconds = seconds; forAndroid = android
         name = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
         // Files offers "Use as Ringtone" for ordinary audio files, so the tone travels as .m4a (the same bytes as .m4r).
         let safe = String(name.map { $0.isLetter || $0.isNumber || " -_".contains($0) ? $0 : "_" }).trimmingCharacters(in: .whitespaces)
-        fileName = (safe.isEmpty ? "Ringtone" : safe) + ".m4a"
+        fileName = (safe.isEmpty ? "Ringtone" : safe) + (android ? ".ogg" : ".m4a")
 
         let fd = socket(AF_INET, Self.streamType, 0)
         guard fd >= 0 else { throw RingtoneError("Couldn't start sharing on this network.") }
@@ -203,7 +229,7 @@ final class RingtoneShare {
             let partial = from != nil || to != nil
             var extra = "Accept-Ranges: bytes\r\nContent-Disposition: attachment; filename=\"\(fileName)\"\r\n"
             if partial { extra += "Content-Range: bytes \(start)-\(end)/\(audio.count)\r\n" }
-            send(client, partial ? "206 Partial Content" : "200 OK", "audio/mp4", Array(audio[start...end]), head: head, extra: extra)
+            send(client, partial ? "206 Partial Content" : "200 OK", forAndroid ? "audio/ogg" : "audio/mp4", Array(audio[start...end]), head: head, extra: extra)
             if !head && end == audio.count - 1 {
                 lock.lock(); downloads += 1; lock.unlock()
                 DispatchQueue.main.async { self.onDownload?() }
@@ -233,6 +259,23 @@ final class RingtoneShare {
         func html(_ s: String) -> String { s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;") }
         let title = html(name), file = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
         let length = String(format: "%.0f", seconds)
+        if forAndroid {
+            return """
+            <!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+            <title>\(title) · Jethriki</title><style>
+            :root{color-scheme:light dark;--bg:#f6f4ff;--card:#fff;--text:#1a1033;--muted:#5d5579}
+            @media (prefers-color-scheme:dark){:root{--bg:#0d0820;--card:#1a1033;--text:#f3efff;--muted:#b6add6}}
+            body{margin:0;background:var(--bg);color:var(--text);font:17px/1.45 system-ui,sans-serif;padding:24px 16px}
+            main{max-width:460px;margin:0 auto;background:var(--card);border-radius:22px;padding:24px;box-shadow:0 10px 40px #0002}
+            h1{font-size:22px;margin:0 0 4px}p{margin:0 0 16px;color:var(--muted)}ol{padding-left:22px;margin:0 0 8px}li{margin:0 0 10px}
+            a.button{display:block;text-align:center;background:linear-gradient(90deg,#7e6eff,#e650dc);color:#fff;text-decoration:none;font-weight:600;padding:15px;border-radius:14px;margin:4px 0 22px}
+            </style></head><body><main>
+            <h1>\(title)</h1><p>Phone ringtone from Jethriki · \(length) seconds</p>
+            <a class=button href="\(file)" download>Download ringtone</a>
+            <ol><li>Tap <b>Download ringtone</b>. Open <b>Settings</b> › <b>Sound &amp; vibration</b> › <b>Phone ringtone</b> (Samsung: <b>Ringtone</b>), tap <b>+</b> or <b>My sounds</b>, and pick the downloaded tone.</li></ol>
+            </main></body></html>
+            """
+        }
         let note = tooLongForShare ? "<p class=warn>This tone is \(length) seconds long. iPhone only accepts tones under 30 seconds here, so it may say the file is too long. Send it with a cable from Jethriki instead, or trim it shorter.</p>" : ""
         return """
         <!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
