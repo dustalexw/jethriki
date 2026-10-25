@@ -16,6 +16,7 @@ public sealed class RingtoneShare : IDisposable {
     readonly CancellationTokenSource stop = new();
     readonly byte[] audio; readonly string token = Convert.ToHexString(RandomNumberGenerator.GetBytes(12)).ToLowerInvariant();
     readonly string fileName, name;
+    readonly bool notification;
     public string Url { get; }
     public double Seconds { get; }
     public bool ForAndroid { get; }
@@ -24,7 +25,8 @@ public sealed class RingtoneShare : IDisposable {
     int downloads;
     public event Action? Downloaded;
 
-    RingtoneShare(string path, IPAddress address) {
+    RingtoneShare(string path, IPAddress address, bool notification) {
+        this.notification = notification;
         audio = File.ReadAllBytes(path);
         ForAndroid = path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase);
         Seconds = (ForAndroid ? Ogg.DurationSeconds(audio) : Mp4.DurationSeconds(audio)) ?? throw new IPhoneException(Path.GetFileName(path) + " is not a ringtone Jethriki made. Download it with the iPhone or Android ringtone preset first.");
@@ -36,7 +38,7 @@ public sealed class RingtoneShare : IDisposable {
         _ = AcceptLoop();
     }
 
-    public static RingtoneShare Start(string path) => new(path, LocalAddress() ?? throw new IPhoneException("This computer isn't on a network. Connect it to the same Wi-Fi as your iPhone."));
+    public static RingtoneShare Start(string path, bool notification = false) => new(path, LocalAddress() ?? throw new IPhoneException("This computer isn't on a network. Connect it to the same Wi-Fi as your iPhone."), notification);
 
     /// The address an iPhone on the same network can reach: a private IPv4 address of an active Wi-Fi or Ethernet adapter.
     public static IPAddress? LocalAddress() {
@@ -98,7 +100,9 @@ public sealed class RingtoneShare : IDisposable {
     string Page() {
         string title = WebUtility.HtmlEncode(name), file = Uri.EscapeDataString(fileName);
         string steps = ForAndroid
-            ? "<ol><li>Tap <b>Download ringtone</b>.</li>\n<li>Open <b>Settings</b> › <b>Sound &amp; vibration</b> › <b>Phone ringtone</b> (Samsung: <b>Ringtone</b>), tap <b>+</b> or <b>My sounds</b>, and pick the downloaded tone.</li></ol>"
+            ? (notification
+                ? "<ol><li>Tap <b>Download ringtone</b>.</li>\n<li>Open <b>Settings</b> › <b>Sound &amp; vibration</b> › <b>Notification sound</b> (Samsung: <b>Notification sounds</b>), tap <b>+</b> or <b>My sounds</b>, and pick the downloaded tone.</li></ol>"
+                : "<ol><li>Tap <b>Download ringtone</b>.</li>\n<li>Open <b>Settings</b> › <b>Sound &amp; vibration</b> › <b>Phone ringtone</b> (Samsung: <b>Ringtone</b>), tap <b>+</b> or <b>My sounds</b>, and pick the downloaded tone.</li></ol>")
             : "<ol><li>Tap <b>Download ringtone</b>, then <b>Download</b> if Safari asks.</li>\n<li>Open the <b>Files</b> app › <b>Downloads</b> and tap the tone.</li>\n<li>Tap <b>Share</b>, then <b>Use as Ringtone</b>. It may be under <b>More</b>.</li></ol>\n<p>Needs iOS 26 or later. On older iPhones, send the tone from Jethriki with the cable instead.</p>";
         string note = TooLongForShare ? $"<p class=warn>This tone is {Seconds:0} seconds long. iPhone only accepts tones under 30 seconds here, so it may say the file is too long. Send it with a cable from Jethriki instead, or trim it shorter.</p>" : "";
         return $$$"""

@@ -20,20 +20,21 @@ public sealed class AndroidWindow : ThemedWindow {
     readonly TextBlock empty, status = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 440 }, wifiStatus = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 440 },
         downloads = new() { Classes = { "secondary" }, FontSize = 12.5 };
     readonly RingtoneShare? share;
-    readonly bool hasAdb;
+    readonly bool hasAdb, notification;
     AndroidDevice[] shown = [];
     bool busy, listing;
 
-    public AndroidWindow(string path, Action<string>? log = null) : base("Send to Android", 520, 600) {
-        this.path = path; this.log = log; hasAdb = Android.FindAdb() != null; SizeToContent = SizeToContent.Height; CanResize = false;
+    public AndroidWindow(string path, Action<string>? log = null, bool notification = false) : base("Send to Android", 520, 600) {
+        this.path = path; this.log = log; this.notification = notification;
+        if (notification) setRingtone.Content = "Also set as the notification sound"; hasAdb = Android.FindAdb() != null; SizeToContent = SizeToContent.Height; CanResize = false;
         TextBlock Heading(string text) => new() { Text = text, FontSize = 16, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
         TextBlock Note(string text) => new() { Text = text, Classes = { "secondary" }, FontSize = 12.5, TextWrapping = TextWrapping.Wrap, MaxWidth = 460 };
 
         string length = ""; Exception? shareError = null;
-        try { share = RingtoneShare.Start(path); length = $" · {share.Seconds:0.#} seconds"; } catch (Exception error) { shareError = error; }
+        try { share = RingtoneShare.Start(path, notification); length = $" · {share.Seconds:0.#} seconds"; } catch (Exception error) { shareError = error; }
         var body = new StackPanel { Spacing = 8 };
         body.Children.Add(new TextBlock { Text = Path.GetFileNameWithoutExtension(path), FontSize = 20, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, MaxWidth = 460 });
-        body.Children.Add(Note("Ringtone" + length));
+        body.Children.Add(Note((notification ? "Notification sound" : "Ringtone") + length));
 
         body.Children.Add(Heading("USB or Wi-Fi (adb)"));
         empty = Note("Connect the phone with a cable and turn on Developer options › USB debugging, then tap Allow on the phone.");
@@ -115,8 +116,8 @@ public sealed class AndroidWindow : ThemedWindow {
         bool asRingtone = setRingtone.IsChecked == true;
         SetBusy(true, $"Sending to {device.Model}…");
         try {
-            string name = await Android.SendRingtoneAsync(device, path, asRingtone, log, closing.Token);
-            SetBusy(false, $"Added “{name}” to Ringtones." + (asRingtone ? " It's now the phone ringtone." : ""));
+            string name = await Android.SendRingtoneAsync(device, path, asRingtone, log, notification, closing.Token);
+            SetBusy(false, notification ? $"Added “{name}” to Notifications." + (asRingtone ? " It's now the notification sound." : "") : $"Added “{name}” to Ringtones." + (asRingtone ? " It's now the phone ringtone." : ""));
         } catch (OperationCanceledException) { return; }
         catch (Exception error) { SetBusy(false); SetStatus(Message(error), true); }
     }

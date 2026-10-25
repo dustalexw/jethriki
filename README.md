@@ -137,6 +137,13 @@ Or send it straight from Jethriki with **Send to Android**:
 - **Wi-Fi** — the same, over Developer options › Wireless debugging after pairing once with a code.
 - **Wi-Fi share** — no setup: scan the QR code, download the tone, then pick it in Settings › Sound.
 
+**Notification sounds** — set **Tone type** to **Notification / text tone** for either ringtone
+format, or pick the **iPhone text tone · M4R** or **Android notification sound · OGG** preset. The
+sound starts instantly (leading silence removed), is loudness-levelled, at most 10 seconds (the
+presets take 5) and fades out in 0.4 s. Send to Android puts it in the phone's Notifications folder
+and can make it the default notification sound; on iPhone, pick it under Settings › Sounds & Haptics ›
+Text Tone after the restart.
+
 **Trim** — download only a time range, with optional frame-accurate cuts.
 
 **Playlist** — single video vs whole playlist, item ranges like `1-5,8,-3::`, and a
@@ -153,8 +160,8 @@ folders) or your own, safe-ASCII names, overwrite and file-date behavior.
 **Queue** — several downloads at once (configurable), live progress, speed, ETA and
 size, post-processing stage, per-job log, cancel, retry and Show in Finder.
 
-**Presets** — eleven built-ins (Best MKV, Compatible MP4, MP3 320, FLAC, Podcast,
-iPhone ringtone, Android ringtone, Album split, Ad-free, Shrink for sharing, Archive) plus your own. Settings persist
+**Presets** — thirteen built-ins (Best MKV, Compatible MP4, MP3 320, FLAC, Podcast,
+iPhone ringtone, iPhone text tone, Android ringtone, Android notification sound, Album split, Ad-free, Shrink for sharing, Archive) plus your own. Settings persist
 between launches.
 
 ## Notes

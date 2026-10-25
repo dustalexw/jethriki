@@ -14,12 +14,14 @@ public sealed class AndroidDialog : Form {
     readonly Label empty, hint, status = new() { AutoSize = true, MaximumSize = new Size(440, 0), Margin = new Padding(0, 4, 0, 0) },
         wifiStatus = new() { AutoSize = true, MaximumSize = new Size(440, 0), Margin = new Padding(0, 4, 0, 0) }, downloads = new() { AutoSize = true, Tag = "secondary" };
     readonly Action<string>? log;
+    readonly bool notification;
     readonly bool hasAdb;
     RingtoneShare? share;
     bool busy, listing;
 
-    public AndroidDialog(string path, Action<string>? log = null) {
-        this.path = path; this.log = log; hasAdb = Android.FindAdb() != null;
+    public AndroidDialog(string path, Action<string>? log = null, bool notification = false) {
+        this.path = path; this.log = log; this.notification = notification;
+        if (notification) setRingtone.Text = "Also set as the notification sound"; hasAdb = Android.FindAdb() != null;
         SuspendLayout(); AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
         Text = "Send to Android"; Font = new Font("Segoe UI", 10); FormBorderStyle = FormBorderStyle.FixedDialog; MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent; AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink; KeyPreview = true;
@@ -29,9 +31,9 @@ public sealed class AndroidDialog : Form {
 
         string length = "";
         Exception? shareError = null;
-        try { share = RingtoneShare.Start(path); length = $" · {share.Seconds:0.#} seconds"; } catch (Exception error) { shareError = error; }
+        try { share = RingtoneShare.Start(path, notification); length = $" · {share.Seconds:0.#} seconds"; } catch (Exception error) { shareError = error; }
         layout.Controls.Add(new Label { Text = Path.GetFileNameWithoutExtension(path), AutoSize = true, MaximumSize = new Size(440, 0), UseMnemonic = false, Font = new Font("Segoe UI Semibold", 14f), Margin = new Padding(0, 0, 0, 2) });
-        layout.Controls.Add(Note("Ringtone" + length));
+        layout.Controls.Add(Note((notification ? "Notification sound" : "Ringtone") + length));
 
         layout.Controls.Add(Heading("USB or Wi-Fi (adb)"));
         hint = Note("Install Android Platform Tools to send by cable or Wi-Fi: winget install Google.PlatformTools");
@@ -111,9 +113,9 @@ public sealed class AndroidDialog : Form {
         bool asRingtone = setRingtone.Checked;
         SetBusy(true, $"Sending to {device.Model}…");
         try {
-            string name = await Android.SendRingtoneAsync(device, path, asRingtone, log, closing.Token);
+            string name = await Android.SendRingtoneAsync(device, path, asRingtone, log, notification, closing.Token);
             if (IsDisposed) return;
-            SetBusy(false, $"Added “{name}” to Ringtones." + (asRingtone ? " It's now the phone ringtone." : ""));
+            SetBusy(false, notification ? $"Added “{name}” to Notifications." + (asRingtone ? " It's now the notification sound." : "") : $"Added “{name}” to Ringtones." + (asRingtone ? " It's now the phone ringtone." : ""));
         } catch (OperationCanceledException) { return; }
         catch (Exception error) { if (!IsDisposed) { SetBusy(false); status.ForeColor = Color.Firebrick; status.Text = Message(error); } }
     }

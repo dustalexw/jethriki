@@ -215,7 +215,7 @@ public sealed class MainWindow : Window {
     }
     string Summary() {
         var o = Current;
-        if (o.Mode == "audio") return o.AudioFormat == "best" ? "Original audio" : o.AudioFormat.ToUpperInvariant() + (o.AudioFormat is "flac" or "alac" or "wav" ? "" : " · " + Choice(nameof(DownloadOptions.AudioQuality), o.AudioQuality));
+        if (o.Mode == "audio") return o.AudioFormat == "best" ? "Original audio" : o.AudioFormat.ToUpperInvariant() + (o.MakesNotificationSound ? " · notification" : "") + (o.AudioFormat is "flac" or "alac" or "wav" ? "" : " · " + Choice(nameof(DownloadOptions.AudioQuality), o.AudioQuality));
         var parts = new List<string> { o.Container.ToUpperInvariant(), o.MaxResolution == "best" ? "Best" : Choice(nameof(DownloadOptions.MaxResolution), o.MaxResolution) };
         if (o.EncodeEnabled) parts.Add("re-encode");
         return string.Join(" · ", parts);
@@ -326,12 +326,12 @@ public sealed class MainWindow : Window {
     void SendToAndroid() {
         var job = SelectedJob();
         if (job == null || AndroidRingtoneFile(job) is not { } file) { footer.Text = "Send to Android needs a finished .ogg ringtone. Download with the Android ringtone preset."; return; }
-        _ = new AndroidWindow(file, job.AddLog).ShowDialog(this);
+        _ = new AndroidWindow(file, job.AddLog, job.Options.MakesNotificationSound).ShowDialog(this);
     }
     void SendToIPhone() {
         var job = SelectedJob();
         if (job == null || RingtoneFile(job) is not { } file) { footer.Text = "Send to iPhone needs a finished .m4r ringtone. Download with the iPhone ringtone preset."; return; }
-        _ = new IPhoneWindow(file, job.AddLog).ShowDialog(this);
+        _ = new IPhoneWindow(file, job.AddLog, job.Options.MakesNotificationSound).ShowDialog(this);
     }
     void ShowLog() { if (SelectedJob() is { } job) new LogWindow(job).Show(this); }
     void OpenFolder(string path) { try { Directory.CreateDirectory(path); Shell.Open(path); } catch (Exception error) { _ = Error(error); } }

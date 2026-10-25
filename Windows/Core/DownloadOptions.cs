@@ -51,6 +51,9 @@ public sealed class DownloadOptions {
     [Setting("Audio", "Audio Quality", Choices = "q0=VBR best|q2=VBR high|q5=VBR medium|k320=320 kbps|k256=256 kbps|k192=192 kbps|k160=160 kbps|k128=128 kbps|k96=96 kbps|k64=64 kbps")]
     public string AudioQuality { get; set; } = "q0";
 
+    [Setting("Audio", "Tone type", Choices = "ringtone=Ringtone|notification=Notification / text tone", Hint = "For the iPhone and Android ringtone formats. Notification sounds start instantly (leading silence removed), are at most 10 seconds and fade out quickly.")]
+    public string ToneKind { get; set; } = "ringtone";
+
     [Setting("Audio", "Normalize Audio")]
     public bool NormalizeAudio { get; set; } = false;
 
@@ -252,6 +255,7 @@ public sealed class DownloadOptions {
     /// The download is finished as an iPhone ringtone (.m4r).
     public bool MakesRingtone => Mode == "audio" && AudioFormat == "m4r";
     public bool MakesAndroidRingtone => Mode == "audio" && AudioFormat == "android";
+    public bool MakesNotificationSound => (MakesRingtone || MakesAndroidRingtone) && ToneKind == "notification";
     public bool MusicTagsActive => EmbedMetadata && MusicTags && (Mode == "audio" || MusicTagsOnVideo);
     public bool RetagsChapters => MusicTagsActive && SplitChapters && TagChapterTracks && Mode == "audio";
     public bool ForcesKeyframes => (TrimEnabled && ForceKeyframes) || (Mode != "audio" && PreciseCuts && (SponsorBlockMode == "remove" || !string.IsNullOrWhiteSpace(RemoveChaptersRegex)));

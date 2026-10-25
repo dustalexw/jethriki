@@ -239,7 +239,7 @@ public sealed class MainForm : Form {
     }
     string Summary() {
         var o = Current;
-        if (o.Mode == "audio") return o.AudioFormat == "best" ? "Original audio" : o.AudioFormat.ToUpperInvariant() + (o.AudioFormat is "flac" or "alac" or "wav" ? "" : " · " + Choice(nameof(DownloadOptions.AudioQuality), o.AudioQuality));
+        if (o.Mode == "audio") return o.AudioFormat == "best" ? "Original audio" : o.AudioFormat.ToUpperInvariant() + (o.MakesNotificationSound ? " · notification" : "") + (o.AudioFormat is "flac" or "alac" or "wav" ? "" : " · " + Choice(nameof(DownloadOptions.AudioQuality), o.AudioQuality));
         var parts = new List<string> { o.Container.ToUpperInvariant(), o.MaxResolution == "best" ? "Best" : Choice(nameof(DownloadOptions.MaxResolution), o.MaxResolution) };
         if (o.EncodeEnabled) parts.Add("re-encode");
         return string.Join(" · ", parts);
@@ -425,11 +425,11 @@ public sealed class MainForm : Form {
     static string? AndroidRingtoneFile(DownloadJob? job) => job is { Done: true } ? job.OutputFiles.FirstOrDefault(f => f.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) && File.Exists(f)) : null;
     void SendToAndroid() {
         var job = SelectedJob(); if (AndroidRingtoneFile(job) is not { } file || job == null) { footer.Text = "Send to Android needs a finished .ogg ringtone. Download with the Android ringtone preset."; return; }
-        using var dialog = new AndroidDialog(file, line => job.AddLog(line)); dialog.ShowDialog(this);
+        using var dialog = new AndroidDialog(file, line => job.AddLog(line), job.Options.MakesNotificationSound); dialog.ShowDialog(this);
     }
     void SendToIPhone() {
         var job = SelectedJob(); if (RingtoneFile(job) is not { } file || job == null) { footer.Text = "Send to iPhone needs a finished .m4r ringtone. Download with the iPhone ringtone preset."; return; }
-        using var dialog = new IPhoneDialog(file, line => job.AddLog(line)); dialog.ShowDialog(this);
+        using var dialog = new IPhoneDialog(file, line => job.AddLog(line), job.Options.MakesNotificationSound); dialog.ShowDialog(this);
     }
     void OpenFolder(string path) { try { Directory.CreateDirectory(path); Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); } catch (Exception error) { Error(error); } }
     void Error(Exception error) { if (!IsDisposed) { footer.Text = error.Message; MessageBox.Show(this, error.Message, "Jethriki", MessageBoxButtons.OK, MessageBoxIcon.Error); } }
