@@ -83,11 +83,17 @@ final class ToolLocator: ObservableObject {
             fv = first.replacingOccurrences(of: "ffmpeg version ", with: "")
                 .components(separatedBy: " Copyright").first ?? first
         }
+        var encoders: Set<String>?
+        if let f = ffmpegPath, let r = try? await Shell.run(f, ["-hide_banner", "-encoders"], environment: env), r.status == 0 {
+            encoders = CommandBuilder.parseEncoders(r.stdout)
+        }
         let ytdlpText = yv
         let ffmpegText = fv
+        let found = encoders
         await MainActor.run {
             self.ytdlpVersion = ytdlpText
             self.ffmpegVersion = ffmpegText
+            CommandBuilder.ffmpegEncoders = found
         }
     }
 

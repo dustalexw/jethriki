@@ -132,11 +132,15 @@ public static class Ogg {
     public static double? DurationSeconds(byte[] file) {
         if (file.Length < 58 || !file.AsSpan(0, 4).SequenceEqual("OggS"u8)) return null;
         int packet = 27 + file[26];
-        if (packet + 16 > file.Length || file[packet] != 1 || !file.AsSpan(packet + 1, 6).SequenceEqual("vorbis"u8)) return null;
-        uint rate = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(file.AsSpan(packet + 12));
+        if (packet + 19 > file.Length) return null;
+        uint rate; long preSkip = 0;
+        if (file[packet] == 1 && file.AsSpan(packet + 1, 6).SequenceEqual("vorbis"u8)) rate = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(file.AsSpan(packet + 12));
+        // Opus granule positions always count 48 kHz samples, including the encoder's pre-skip.
+        else if (file.AsSpan(packet, 8).SequenceEqual("OpusHead"u8)) { rate = 48000; preSkip = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(file.AsSpan(packet + 10)); }
+        else return null;
         int last = file.AsSpan().LastIndexOf("OggS"u8);
         if (rate == 0 || last < 0 || last + 14 > file.Length) return null;
         long granule = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(file.AsSpan(last + 6));
-        return granule <= 0 ? null : (double)granule / rate;
+        return granule <= preSkip ? null : (double)(granule - preSkip) / rate;
     }
 }
