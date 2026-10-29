@@ -13,6 +13,13 @@ final class EngineTests: XCTestCase {
         return url
     }()
     static var clip: URL { work.appendingPathComponent("song.mp4") }
+    /// Trimming downloads only part of a file, which yt-dlp does over HTTP with range requests, not file://.
+    /// The app's Wi-Fi share server serves the clip that way.
+    static var server: RingtoneShare?
+    static func servedClip() throws -> URL {
+        if server == nil { server = try RingtoneShare(path: clip.path) }
+        return server!.url.appendingPathComponent("song.m4a")
+    }
     let ffmpeg = (PythonEngine.toolsDirectory as NSString).appendingPathComponent("ffmpeg")
     let ffprobe = (PythonEngine.toolsDirectory as NSString).appendingPathComponent("ffprobe")
     let ytdlp = (PythonEngine.toolsDirectory as NSString).appendingPathComponent("yt-dlp")
@@ -116,13 +123,15 @@ final class EngineTests: XCTestCase {
     @MainActor
     private func download(_ preset: String, edit: (inout DownloadOptions) -> Void = { _ in }) async throws -> DownloadJob {
         try await makeClip()
+        var link = Self.clip.absoluteString
         var options = OptionsStore.builtInPresets.first { $0.name == preset }?.options ?? DownloadOptions()
         options.outputDirectory = Self.work.appendingPathComponent(preset.replacingOccurrences(of: " ", with: "-")).path
         options.extraArgs = "--enable-file-urls"
         edit(&options)
+        if options.trimEnabled { link = try Self.servedClip().absoluteString }
         let manager = DownloadManager()
         let tools = ToolLocator()
-        manager.enqueue(urls: [Self.clip.absoluteString], options: options, tools: tools.snapshot()!)
+        manager.enqueue(urls: [link], options: options, tools: tools.snapshot()!)
         let job = manager.jobs[0]
         let deadline = Date().addingTimeInterval(300)
         while !job.status.isDone && Date() < deadline { try await Task.sleep(nanoseconds: 200_000_000) }
