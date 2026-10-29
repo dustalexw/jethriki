@@ -59,12 +59,21 @@ inside the app:
 
 ## Build
 
+**Ready to run:** every iOS build on GitHub Actions has a **Jethriki-X.Y.Z-Xcode** download (the run's
+Summary page › Artifacts). Unzip it, open `iOS/Jethriki.xcodeproj`, choose an iPhone or iPad at the top of
+Xcode and press ⌘R. FFmpeg, Python and yt-dlp are already inside. One project runs on both iPhone and iPad.
+
+**From this repository:** `iOS/scripts/setup.sh` fetches Python and yt-dlp, downloads the FFmpeg framework
+CI built (with the GitHub CLI signed in), generates the project and opens it. Step by step instead:
+
 ```bash
 iOS/scripts/build-ffmpeg.sh iOS/build/ffmpeg   # FFmpeg and codecs for device + simulator (about an hour)
 iOS/scripts/prepare-python.sh                   # Python for iOS, yt-dlp and its packages
 cd iOS && xcodegen                              # brew install xcodegen
 open Jethriki.xcodeproj
 ```
+
+`iOS/scripts/make-ipa.sh` builds the .ipa for sideloading.
 
 Set your team under Signing & Capabilities for the Jethriki and JethrikiShare targets, then run.
 `xcodebuild test -scheme Jethriki -destination 'platform=iOS Simulator,name=iPhone 17'` runs the engine tests:

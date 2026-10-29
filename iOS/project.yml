@@ -6,6 +6,9 @@ options:
   deploymentTarget:
     iOS: "16.0"
   createIntermediateGroups: true
+configFiles:
+  Debug: build/Versions.xcconfig
+  Release: build/Versions.xcconfig
 settings:
   base:
     MARKETING_VERSION: "2.10.0"

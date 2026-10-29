@@ -154,6 +154,44 @@ jobs:
           (cd iOS/build/ipa && zip -qry "../Jethriki-$VERSION-iOS.ipa" Payload)
           ls -la iOS/build/Jethriki-$VERSION-iOS.ipa
           shasum -a 256 iOS/build/Jethriki-$VERSION-iOS.ipa
+      - name: Package a ready-to-run Xcode project
+        # Everything ⌘R needs, already fetched and built: unzip, open iOS/Jethriki.xcodeproj, pick an iPhone or
+        # iPad and run.
+        run: |
+          set -e
+          OUT=iOS/build/package/Jethriki-$VERSION-Xcode
+          rm -rf iOS/build/package && mkdir -p "$OUT/iOS/build/ffmpeg" "$OUT/Sources/YTDLPStudio"
+          for d in App ShareExtension Tests Python Resources scripts project.yml README.md Jethriki.xcodeproj; do
+            ditto "iOS/$d" "$OUT/iOS/$d"
+          done
+          for d in Python.xcframework app_packages Versions.xcconfig ytdlp-version.txt python-version.txt; do
+            ditto "iOS/build/$d" "$OUT/iOS/build/$d"
+          done
+          ditto iOS/build/ffmpeg/JethrikiFFmpeg.xcframework "$OUT/iOS/build/ffmpeg/JethrikiFFmpeg.xcframework"
+          for d in Models Services Views; do ditto "Sources/YTDLPStudio/$d" "$OUT/Sources/YTDLPStudio/$d"; done
+          # The project file from CI carries no signing team; Xcode asks for one when you pick your own device.
+          rm -rf "$OUT/iOS/Jethriki.xcodeproj/xcuserdata" "$OUT/iOS/Jethriki.xcodeproj/project.xcworkspace/xcuserdata"
+          cat > "$OUT/READ ME FIRST.txt" <<TEXT
+          Jethriki $VERSION for iPhone and iPad — Xcode project
+
+          1. Open iOS/Jethriki.xcodeproj in Xcode.
+          2. At the top of the window, choose an iPhone or iPad: a simulator, or your own device plugged in.
+          3. Press Command-R.
+
+          On your own iPhone or iPad, first select the Jethriki project in the sidebar, then for both the
+          Jethriki and JethrikiShare targets: Signing & Capabilities > Team > your Apple ID. If the bundle
+          identifier is taken, change com.dustalexw to something of your own in both. With a free Apple ID,
+          remove the App Groups capability from both targets.
+
+          Everything else (FFmpeg, Python, yt-dlp) is already inside this folder.
+          TEXT
+          (cd iOS/build/package && ditto -c -k --keepParent "Jethriki-$VERSION-Xcode" "../Jethriki-$VERSION-Xcode.zip")
+          ls -la "iOS/build/Jethriki-$VERSION-Xcode.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Jethriki-${{ env.VERSION }}-Xcode
+          path: iOS/build/Jethriki-${{ env.VERSION }}-Xcode.zip
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         with:
           name: Jethriki-${{ env.VERSION }}-iOS

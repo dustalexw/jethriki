@@ -52,4 +52,6 @@ if find build/app_packages -name "*.so" -o -name "*.dylib" | grep -q .; then
     echo "error: a bundled package contains native code" >&2; exit 1
 fi
 "$PY" -c "import sys; sys.path.insert(0, 'build/app_packages'); import yt_dlp.version as v; print(v.__version__)" > build/ytdlp-version.txt
+# Xcode reads the bundled yt-dlp version from here (shown in Settings), so a plain ⌘R build has it too.
+echo "JETHRIKI_YTDLP_VERSION = $(cat build/ytdlp-version.txt)" > build/Versions.xcconfig
 echo "Python $PYTHON_VERSION, yt-dlp $(cat build/ytdlp-version.txt), packages in iOS/build/app_packages"
