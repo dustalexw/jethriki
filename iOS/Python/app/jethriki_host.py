@@ -77,7 +77,8 @@ def _execute_child(self, args, executable, preexec_fn, close_fds, pass_fds, cwd,
 
     argv = [args] if isinstance(args, (str, bytes)) else list(args)
     # Output that isn't piped would be inherited from yt-dlp, so it goes to the running job's log.
-    inherit_out, inherit_err = _inherited or (1, 2)
+    job = current_job()
+    inherit_out, inherit_err = (job.inherited if job and job.inherited else None) or (1, 2)
     in_fd = p2cread if p2cread != -1 else 0
     out_fd = c2pwrite if c2pwrite != -1 else inherit_out
     err_fd = errwrite if errwrite != -1 else inherit_err
@@ -127,6 +128,10 @@ def _send_signal(self, sig):
 
 
 def patch_subprocess():
+    # Python for iOS refuses every Popen up front; let it through to _execute_child, which runs FFmpeg
+    # in-process and reports anything else as not found.
+    if hasattr(subprocess, "_can_fork_exec"):
+        subprocess._can_fork_exec = True
     subprocess.Popen._execute_child = _execute_child
     subprocess.Popen._wait = _wait
     subprocess.Popen._internal_poll = _internal_poll
@@ -184,8 +189,70 @@ class LineSink:
 
 _jobs = {}
 _jobs_lock = threading.Lock()
-_run_lock = threading.Lock()
-_inherited = None   # (stdout, stderr) descriptors of the running job, for FFmpeg output that isn't piped
+
+
+class Job:
+    """One yt-dlp run: where its output goes, and the descriptors FFmpeg inherits from it."""
+    def __init__(self, out, err):
+        self.out, self.err = out, err
+        self.inherited = None
+
+
+def current_job():
+    """The job the calling thread works for. Threads yt-dlp starts (fragment downloads, FFmpeg runs) inherit it."""
+    return getattr(threading.current_thread(), "_jt_job", None)
+
+
+_original_thread_start = threading.Thread.start
+
+
+def _thread_start(self, *args, **kwargs):
+    if not hasattr(self, "_jt_job"):
+        self._jt_job = current_job()
+    return _original_thread_start(self, *args, **kwargs)
+
+
+class JobStream:
+    """sys.stdout / sys.stderr while the app runs: each write goes to the output of the job doing it, so several
+    yt-dlp runs (a download, an Analyze, a comment search) can share the interpreter."""
+    encoding = "utf-8"
+    errors = "replace"
+    mode = "w"
+
+    def __init__(self, is_error, fallback):
+        self._is_error, self._fallback = is_error, fallback
+
+    def _target(self):
+        job = current_job()
+        if job is None:
+            return self._fallback
+        return job.err if self._is_error else job.out
+
+    def write(self, text):
+        target = self._target()
+        return target.write(text) if target is not None else len(text)
+
+    def flush(self):
+        target = self._target()
+        if target is not None and hasattr(target, "flush"):
+            target.flush()
+
+    def isatty(self):
+        return False
+
+    def writable(self):
+        return True
+
+    def fileno(self):
+        import io
+        raise io.UnsupportedOperation("fileno")
+
+
+def install_job_streams():
+    if not isinstance(sys.stdout, JobStream):
+        sys.stdout = JobStream(False, sys.stdout)
+        sys.stderr = JobStream(True, sys.stderr)
+        threading.Thread.start = _thread_start
 
 
 def _pipe_into(sink):
@@ -205,55 +272,54 @@ def _pipe_into(sink):
 def run(argv, callback_address, context, token):
     """Runs yt-dlp with `argv` (without the program name). Each output line goes to the C function at
     `callback_address` as (context, utf8_line, is_stderr). Returns yt-dlp's exit status.
-    yt-dlp reads its output streams from `sys`, so one job runs at a time."""
+    Several runs can go at once on different threads; FFmpeg runs one at a time."""
     callback = LINE_CALLBACK(callback_address)
 
     def emit(line, is_error):
         callback(context, line.encode("utf-8", "replace"), 1 if is_error else 0)
 
+    install_job_streams()
     out, err = LineSink(emit, False), LineSink(emit, True)
+    job = Job(out, err)
+    thread = threading.current_thread()
+    previous = getattr(thread, "_jt_job", None)
+    thread._jt_job = job
     with _jobs_lock:
         _jobs[token] = threading.get_ident()
+    (out_fd, out_pump), (err_fd, err_pump) = _pipe_into(out), _pipe_into(err)
+    job.inherited = (out_fd, err_fd)
     try:
-        with _run_lock:
-            global _inherited
-            saved = sys.stdout, sys.stderr, sys.argv
-            sys.stdout, sys.stderr, sys.argv = out, err, ["yt-dlp"] + list(argv)
-            (out_fd, out_pump), (err_fd, err_pump) = _pipe_into(out), _pipe_into(err)
-            _inherited = (out_fd, err_fd)
-            try:
-                import yt_dlp
-                install_javascriptcore()
-                try:
-                    status = yt_dlp.main(default_arguments(argv))
-                except SystemExit as stop:
-                    code = stop.code
-                    if code is None:
-                        status = 0
-                    elif isinstance(code, int):
-                        status = code
-                    else:
-                        err.write(str(code).lstrip("\n") + "\n")
-                        status = 1
-                except KeyboardInterrupt:
-                    err.write("ERROR: Interrupted by user\n")
-                    status = 1
-                except BaseException as error:   # a crash in yt-dlp must not take the app down
-                    import traceback
-                    err.write("ERROR: " + "".join(traceback.format_exception(error)))
-                    status = 1
-                else:
-                    status = status or 0
-            finally:
-                _inherited = None
-                os.close(out_fd)
-                os.close(err_fd)
-                out_pump.join(5)
-                err_pump.join(5)
-                out.close()
-                err.close()
-                sys.stdout, sys.stderr, sys.argv = saved
+        import yt_dlp
+        install_javascriptcore()
+        try:
+            status = yt_dlp.main(default_arguments(argv))
+        except SystemExit as stop:
+            code = stop.code
+            if code is None:
+                status = 0
+            elif isinstance(code, int):
+                status = code
+            else:
+                err.write(str(code).lstrip("\n") + "\n")
+                status = 1
+        except KeyboardInterrupt:
+            err.write("ERROR: Interrupted by user\n")
+            status = 1
+        except BaseException as error:   # a crash in yt-dlp must not take the app down
+            import traceback
+            err.write("ERROR: " + "".join(traceback.format_exception(error)))
+            status = 1
+        else:
+            status = status or 0
     finally:
+        job.inherited = None
+        os.close(out_fd)
+        os.close(err_fd)
+        out_pump.join(5)
+        err_pump.join(5)
+        out.close()
+        err.close()
+        thread._jt_job = previous
         with _jobs_lock:
             _jobs.pop(token, None)
     return int(status) if isinstance(status, int) else 1

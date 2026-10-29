@@ -5,6 +5,7 @@ struct SettingsTab: View {
     @AppStorage("appearance") private var appearance = AppAppearance.system.rawValue
     @AppStorage("playSound") private var playSound = false
     @AppStorage(BackgroundKeeper.settingKey) private var keepRunning = true
+    @AppStorage("maxConcurrent") private var maxConcurrent = 2
     @State private var updating = false
     @State private var updateMessage: String?
     @State private var showEncoders = false
@@ -23,6 +24,7 @@ struct SettingsTab: View {
                     .pickerStyle(.segmented)
                 }
                 Section {
+                    Stepper("Simultaneous downloads: \(maxConcurrent)", value: $maxConcurrent, in: 1...4)
                     Toggle("Keep downloading in the background", isOn: $keepRunning)
                     Toggle("Play a sound when a download finishes", isOn: $playSound)
                 } header: {

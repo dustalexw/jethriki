@@ -209,12 +209,7 @@ final class DownloadManager: ObservableObject {
 
     init() { Self.current = self }
 
-    #if os(iOS)
-    // yt-dlp runs inside the app's one Python interpreter, which runs one job at a time.
-    private var maxConcurrent: Int { 1 }
-    #else
     private var maxConcurrent: Int { max(1, UserDefaults.standard.integer(forKey: "maxConcurrent")) }
-    #endif
 
     func enqueue(urls: [String], options: DownloadOptions, tools: ToolSnapshot, commentSelections: [String: String] = [:]) {
         for url in urls {

@@ -123,10 +123,10 @@ build_platform() {
         log libvpx
         rm -rf "$build/vpx" && mkdir -p "$build/vpx"
         # libvpx's iOS target sets the SDK and deployment flags itself; the simulator uses the plain C build.
-        local vpx_target=arm64-darwin-gcc vpx_cflags="-fPIC -miphoneos-version-min=$MIN_IOS"
-        [ "$platform" = iphonesimulator ] && vpx_target=generic-gnu vpx_cflags=$cflags
+        local vpx_target=arm64-darwin-gcc vpx_cflags="-fPIC -miphoneos-version-min=$MIN_IOS" vpx_ldflags=""
+        [ "$platform" = iphonesimulator ] && vpx_target=generic-gnu vpx_cflags=$cflags vpx_ldflags=$cflags
         ( cd "$build/vpx" &&
-          CC="$cc" CXX="$cxx" AR=$(xcrun -f ar) LD="$cc" STRIP=$(xcrun -f strip) \
+          CC="$cc" CXX="$cxx" AR=$(xcrun -f ar) LD="$cc" STRIP=$(xcrun -f strip) LDFLAGS="$vpx_ldflags" \
           "$WORK/src/libvpx/configure" --target=$vpx_target --prefix="$prefix" --enable-static --disable-shared \
               --enable-pic --disable-examples --disable-tools --disable-docs --disable-unit-tests \
               --enable-vp9-highbitdepth --extra-cflags="$vpx_cflags" --extra-cxxflags="$vpx_cflags" > build.log 2>&1 &&

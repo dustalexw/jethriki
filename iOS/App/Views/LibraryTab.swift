@@ -153,6 +153,7 @@ struct RingtoneHelpSheet: View {
                 Section {
                     Label("Tap Share below, then Use as Ringtone. It may be under More.", systemImage: "1.circle")
                     Label("Choose it in Settings › Sounds & Haptics › Ringtone (or Text Tone).", systemImage: "2.circle")
+                    Label("If Share doesn't offer it, open the Files app › On My iPhone › Jethriki, press and hold the tone, and choose Share › Use as Ringtone.", systemImage: "questionmark.circle")
                 } footer: {
                     Text("Use as Ringtone needs iOS 26 or later and a tone under 30 seconds. On older iPhones, send the .m4r from Jethriki on a Mac or PC with the cable.")
                 }

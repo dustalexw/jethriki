@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Writing to a pipe or socket whose reader has gone away must be an error, not the end of the app:
         // FFmpeg, yt-dlp and the Wi-Fi share all run inside this process.
         signal(SIGPIPE, SIG_IGN)
+        UserDefaults.standard.register(defaults: ["maxConcurrent": 2])
         // Python takes a moment to start; do it now so the first download doesn't wait.
         PythonEngine.shared.start()
         UNUserNotificationCenter.current().delegate = NotificationPresenter.shared
