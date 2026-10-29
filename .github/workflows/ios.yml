@@ -92,8 +92,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$VERSION" JETHRIKI_YTDLP_VERSION="$(cat iOS/build/ytdlp-version.txt)" \
             -resultBundlePath iOS/build/tests.xcresult 2>&1 | tee iOS/build/test.log | grep -E "error:|warning: .*Jethriki|Test Case|Executed|passed|failed|\*\*" | grep -v "^\s*$" | head -400
       - name: Screenshots of each tab
+        # Pictures for reviewing the interface; a problem here shouldn't hold back the app.
+        continue-on-error: true
         run: |
-          DEVICE=$(xcrun simctl list devices booted -j | python3 -c "import json,sys; print(next(d['udid'] for ds in json.load(sys.stdin)['devices'].values() for d in ds))")
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = [d for runtime, ds in json.load(sys.stdin)['devices'].items() if 'iOS' in runtime for d in ds]
+          print(next(d['udid'] for d in reversed(devices) if d['name'].startswith('iPhone')))")
+          xcrun simctl bootstatus "$DEVICE" -b
           APP=$(find ~/Library/Developer/Xcode/DerivedData -path "*Debug-iphonesimulator/Jethriki.app" -maxdepth 6 | head -1)
           mkdir -p iOS/build/screens
           xcrun simctl install "$DEVICE" "$APP"
