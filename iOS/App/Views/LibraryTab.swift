@@ -218,7 +218,7 @@ struct WiFiShareSheet: View {
     private func start() {
         do {
             let s = try RingtoneShare(path: url.path, notification: notification)
-            s.onDownload = { downloads = s.downloads }
+            s.onDownload = { [weak s] in downloads = s?.downloads ?? downloads }
             share = s
         } catch {
             problem = error.localizedDescription

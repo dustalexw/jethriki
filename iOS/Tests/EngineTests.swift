@@ -174,6 +174,7 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(seconds, 10, accuracy: 1.5)
     }
 
+    @MainActor
     func testCancellingADownload() async throws {
         try await makeClip()
         var options = DownloadOptions()
@@ -182,15 +183,13 @@ final class EngineTests: XCTestCase {
         options.outputDirectory = Self.work.appendingPathComponent("cancel").path
         // A very long audio filter keeps FFmpeg busy long enough to cancel it.
         options.extraArgs = "--enable-file-urls --postprocessor-args \"ExtractAudio:-af aloop=loop=-1:size=2e9,atrim=end=3000\""
-        let manager = await DownloadManager()
-        let snapshot = await ToolLocator().snapshot()!
-        await manager.enqueue(urls: [Self.clip.absoluteString], options: options, tools: snapshot)
-        let job = await manager.jobs[0]
+        let manager = DownloadManager()
+        manager.enqueue(urls: [Self.clip.absoluteString], options: options, tools: ToolLocator().snapshot()!)
+        let job = manager.jobs[0]
         try await Task.sleep(nanoseconds: 6_000_000_000)
-        await manager.cancel(job)
+        manager.cancel(job)
         let deadline = Date().addingTimeInterval(30)
-        while await !job.status.isDone && Date() < deadline { try await Task.sleep(nanoseconds: 200_000_000) }
-        let status = await job.status
-        XCTAssertEqual(status, .cancelled)
+        while !job.status.isDone && Date() < deadline { try await Task.sleep(nanoseconds: 200_000_000) }
+        XCTAssertEqual(job.status, .cancelled, job.log.suffix(20).joined(separator: "\n"))
     }
 }

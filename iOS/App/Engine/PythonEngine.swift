@@ -101,8 +101,9 @@ final class PythonEngine {
     }
 
     private static var nextToken = 0
+    private static let tokenLock = NSLock()
     static func makeToken() -> Int {
-        objc_sync_enter(self); defer { objc_sync_exit(self) }
+        tokenLock.lock(); defer { tokenLock.unlock() }
         nextToken += 1
         return nextToken
     }

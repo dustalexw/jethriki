@@ -101,7 +101,7 @@ build_platform() {
         rm -rf "$build/lame" && cp -R "$WORK/src/lame" "$build/lame"
         ( cd "$build/lame" &&
           ./configure --host=aarch64-apple-darwin --prefix="$prefix" --disable-shared --enable-static \
-              --disable-frontend --disable-decoder --with-pic CC="$cc" CFLAGS="$cflags" LDFLAGS="$cflags" > build.log 2>&1 &&
+              --disable-frontend --disable-decoder --with-pic CC="$cc" CFLAGS="$cflags -include strings.h" LDFLAGS="$cflags" > build.log 2>&1 &&
           make -j "$JOBS" >> build.log 2>&1 && make install >> build.log 2>&1 ) || { tail -60 "$build/lame/build.log"; exit 1; }
         touch "$build/lame-r$DEPS_REVISION.done"; done_
     fi
