@@ -29,13 +29,97 @@ jobs:
       - name: Install build tools
         if: steps.cache.outputs.cache-hit != 'true'
         run: brew install cmake meson ninja pkg-config autoconf automake libtool
+      - name: Reuse codec libraries from earlier runs
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            iOS/build/ffmpeg/work/*/prefix
+            iOS/build/ffmpeg/work/*/build/*.done
+          key: ios-codecs-${{ github.run_id }}
+          restore-keys: ios-codecs-
       - name: Build FFmpeg and codecs for device and simulator
         if: steps.cache.outputs.cache-hit != 'true'
-        run: iOS/scripts/build-ffmpeg.sh iOS/build/ffmpeg
+        run: |
+          rm -f iOS/build/ffmpeg/work/*/build/ffmpeg.done
+          iOS/scripts/build-ffmpeg.sh iOS/build/ffmpeg
+      - name: Keep codec libraries for the next run
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            iOS/build/ffmpeg/work/*/prefix
+            iOS/build/ffmpeg/work/*/build/*.done
+          key: ios-codecs-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Pack framework
         run: cd iOS/build/ffmpeg && ditto -c -k --keepParent JethrikiFFmpeg.xcframework JethrikiFFmpeg.xcframework.zip
       - uses: actions/upload-artifact@v7
         with:
           name: JethrikiFFmpeg-xcframework
           path: iOS/build/ffmpeg/JethrikiFFmpeg.xcframework.zip
+          if-no-files-found: error
+
+  app:
+    name: iOS app
+    needs: ffmpeg
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ inputs.version || '2.10.0' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: JethrikiFFmpeg-xcframework
+          path: iOS/build/ffmpeg
+      - name: Unpack FFmpeg
+        run: cd iOS/build/ffmpeg && ditto -x -k JethrikiFFmpeg.xcframework.zip . && ls
+      - name: Fetch Python and yt-dlp
+        run: iOS/scripts/prepare-python.sh
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd iOS && xcodegen
+      - name: Test on the simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = [d for runtime, ds in json.load(sys.stdin)['devices'].items() if 'iOS' in runtime for d in ds]
+          print(next(d['udid'] for d in reversed(devices) if d['name'].startswith('iPhone')))")
+          echo "Simulator $DEVICE"
+          set -o pipefail
+          xcodebuild test -project iOS/Jethriki.xcodeproj -scheme Jethriki -destination "id=$DEVICE" \
+            CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$VERSION" JETHRIKI_YTDLP_VERSION="$(cat iOS/build/ytdlp-version.txt)" \
+            -resultBundlePath iOS/build/tests.xcresult 2>&1 | tee iOS/build/test.log | grep -E "error:|warning: .*Jethriki|Test Case|Executed|passed|failed|\*\*" | grep -v "^\s*$" | head -400
+      - name: Save test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: iOS-test-results
+          path: |
+            iOS/build/test.log
+            iOS/build/tests.xcresult
+      - name: Build for iPhone
+        run: |
+          set -o pipefail
+          xcodebuild build -project iOS/Jethriki.xcodeproj -scheme Jethriki -configuration Release -sdk iphoneos \
+            -derivedDataPath iOS/build/derived CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$VERSION" \
+            JETHRIKI_YTDLP_VERSION="$(cat iOS/build/ytdlp-version.txt)" 2>&1 | tee iOS/build/build.log | grep -E "error:|\*\*" | head -100
+      - name: Package unsigned IPA for sideloading
+        run: |
+          set -e
+          APP=iOS/build/derived/Build/Products/Release-iphoneos/Jethriki.app
+          # Ad-hoc signatures carry the entitlements (the app group the share extension uses); AltStore,
+          # SideStore, Sideloadly or Xcode sign it again with your Apple ID when you install it.
+          find "$APP/Frameworks" -name "*.framework" -maxdepth 1 -exec codesign --force --sign - {} \;
+          codesign --force --sign - --entitlements iOS/ShareExtension/JethrikiShare.entitlements "$APP/PlugIns/JethrikiShare.appex"
+          codesign --force --sign - --entitlements iOS/App/Jethriki.entitlements "$APP"
+          mkdir -p iOS/build/ipa/Payload && cp -R "$APP" iOS/build/ipa/Payload/
+          (cd iOS/build/ipa && zip -qry "../Jethriki-$VERSION-iOS.ipa" Payload)
+          ls -la iOS/build/Jethriki-$VERSION-iOS.ipa
+          shasum -a 256 iOS/build/Jethriki-$VERSION-iOS.ipa
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Jethriki-${{ env.VERSION }}-iOS
+          path: iOS/build/Jethriki-${{ env.VERSION }}-iOS.ipa
           if-no-files-found: error

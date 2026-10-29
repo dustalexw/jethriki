@@ -7,6 +7,8 @@ struct ToolSnapshot {
     let environment: [String: String]
 }
 
+#if !os(iOS)
+// iOS has its own ToolLocator for the tools built into the app: iOS/App/Engine/ToolLocator+iOS.swift.
 /// Finds yt-dlp and ffmpeg. GUI apps don't inherit the shell PATH, so common install locations are scanned.
 final class ToolLocator: ObservableObject {
     @Published private(set) var ytdlpPath: String?
@@ -110,3 +112,4 @@ final class ToolLocator: ObservableObject {
         }
     }
 }
+#endif

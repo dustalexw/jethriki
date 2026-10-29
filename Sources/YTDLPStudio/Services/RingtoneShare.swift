@@ -144,7 +144,7 @@ final class RingtoneShare {
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET); addr.sin_port = 0; addr.sin_addr.s_addr = 0
-        #if os(macOS)
+        #if canImport(Darwin)
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         #endif
         var size = socklen_t(MemoryLayout<sockaddr_in>.size)
@@ -208,7 +208,7 @@ final class RingtoneShare {
 
     private func respond(_ client: Int32) {
         defer { close(client) }
-        #if os(macOS)
+        #if canImport(Darwin)
         var one: Int32 = 1
         setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
         #endif

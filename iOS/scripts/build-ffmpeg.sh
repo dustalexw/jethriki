@@ -27,6 +27,8 @@ OPUS_TAG=v1.6.1
 LAME_VERSION=3.100
 LAME_SHA256=ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
 MBEDTLS_VERSION=3.6.7
+# Bump to rebuild every library when build flags change (finished libraries are cached between CI runs).
+DEPS_REVISION=1
 
 mkdir -p "$WORK/src"
 cd "$WORK/src"
@@ -70,38 +72,41 @@ build_platform() {
     local cmake_common=(-G Ninja -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT="$platform" -DCMAKE_OSX_ARCHITECTURES=arm64
         -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_OSX_DEPLOYMENT_TARGET=$MIN_IOS -DCMAKE_INSTALL_PREFIX="$prefix"
         -DCMAKE_PREFIX_PATH="$prefix" -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        # iOS toolchains only search the SDK; also look in this build's own prefix.
+        -DCMAKE_FIND_ROOT_PATH="$prefix" -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH
+        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH)
     log() { echo "::group::$platform: $*"; }
     done_() { echo "::endgroup::"; }
 
     cmake_lib() {  # name source_dir [cmake args...]
         local name=$1 src=$2; shift 2
-        [ -f "$build/$name.done" ] && return
+        [ -f "$build/$name-r$DEPS_REVISION.done" ] && return
         log "$name"
         cmake -S "$src" -B "$build/$name" "${cmake_common[@]}" "$@" > "$build/$name.log" 2>&1 || { tail -50 "$build/$name.log"; exit 1; }
         cmake --build "$build/$name" -j "$JOBS" >> "$build/$name.log" 2>&1 || { tail -80 "$build/$name.log"; exit 1; }
         cmake --install "$build/$name" >> "$build/$name.log" 2>&1
-        touch "$build/$name.done"; done_
+        touch "$build/$name-r$DEPS_REVISION.done"; done_
     }
 
     cmake_lib ogg "$WORK/src/ogg" -DINSTALL_DOCS=OFF -DBUILD_TESTING=OFF
-    cmake_lib vorbis "$WORK/src/vorbis" -DOGG_ROOT="$prefix"
+    cmake_lib vorbis "$WORK/src/vorbis" -DOGG_ROOT="$prefix" -DOGG_INCLUDE_DIR="$prefix/include" -DOGG_LIBRARY="$prefix/lib/libogg.a"
     cmake_lib opus "$WORK/src/opus" -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF -DOPUS_INSTALL_PKG_CONFIG_MODULE=ON
     cmake_lib mbedtls "$WORK/src/mbedtls" -DENABLE_PROGRAMS=OFF -DENABLE_TESTING=OFF -DMBEDTLS_FATAL_WARNINGS=OFF
     cmake_lib svtav1 "$WORK/src/svtav1" -DBUILD_APPS=OFF -DBUILD_DEC=OFF -DBUILD_TESTING=OFF -DENABLE_AVX512=OFF
     cmake_lib x265 "$WORK/src/x265/source" -DENABLE_SHARED=OFF -DENABLE_CLI=OFF -DENABLE_ASSEMBLY=OFF -DENABLE_LIBNUMA=OFF
 
-    if [ ! -f "$build/lame.done" ]; then
+    if [ ! -f "$build/lame-r$DEPS_REVISION.done" ]; then
         log lame
         rm -rf "$build/lame" && cp -R "$WORK/src/lame" "$build/lame"
         ( cd "$build/lame" &&
           ./configure --host=aarch64-apple-darwin --prefix="$prefix" --disable-shared --enable-static \
               --disable-frontend --disable-decoder --with-pic CC="$cc" CFLAGS="$cflags" LDFLAGS="$cflags" > build.log 2>&1 &&
           make -j "$JOBS" >> build.log 2>&1 && make install >> build.log 2>&1 ) || { tail -60 "$build/lame/build.log"; exit 1; }
-        touch "$build/lame.done"; done_
+        touch "$build/lame-r$DEPS_REVISION.done"; done_
     fi
 
-    if [ ! -f "$build/x264.done" ]; then
+    if [ ! -f "$build/x264-r$DEPS_REVISION.done" ]; then
         log x264
         rm -rf "$build/x264" && cp -R "$WORK/src/x264" "$build/x264"
         ( cd "$build/x264" &&
@@ -109,24 +114,25 @@ build_platform() {
               --sysroot="$sdk" --extra-cflags="-arch arm64 -target $target" --extra-asflags="-arch arm64 -target $target" \
               --extra-ldflags="-arch arm64 -target $target" > build.log 2>&1 &&
           make -j "$JOBS" >> build.log 2>&1 && make install >> build.log 2>&1 ) || { tail -60 "$build/x264/build.log"; exit 1; }
-        touch "$build/x264.done"; done_
+        touch "$build/x264-r$DEPS_REVISION.done"; done_
     fi
 
-    if [ ! -f "$build/vpx.done" ]; then
+    if [ ! -f "$build/vpx-r$DEPS_REVISION.done" ]; then
         log libvpx
         rm -rf "$build/vpx" && mkdir -p "$build/vpx"
-        local vpx_target=arm64-darwin-gcc
-        [ "$platform" = iphonesimulator ] && vpx_target=generic-gnu
+        # libvpx's iOS target sets the SDK and deployment flags itself; the simulator uses the plain C build.
+        local vpx_target=arm64-darwin-gcc vpx_cflags="-fPIC -miphoneos-version-min=$MIN_IOS"
+        [ "$platform" = iphonesimulator ] && vpx_target=generic-gnu vpx_cflags=$cflags
         ( cd "$build/vpx" &&
           CC="$cc" CXX="$cxx" AR=$(xcrun -f ar) LD="$cc" STRIP=$(xcrun -f strip) \
           "$WORK/src/libvpx/configure" --target=$vpx_target --prefix="$prefix" --enable-static --disable-shared \
               --enable-pic --disable-examples --disable-tools --disable-docs --disable-unit-tests \
-              --enable-vp9-highbitdepth --extra-cflags="$cflags" --extra-cxxflags="$cflags" > build.log 2>&1 &&
+              --enable-vp9-highbitdepth --extra-cflags="$vpx_cflags" --extra-cxxflags="$vpx_cflags" > build.log 2>&1 &&
           make -j "$JOBS" >> build.log 2>&1 && make install >> build.log 2>&1 ) || { tail -60 "$build/vpx/build.log"; exit 1; }
-        touch "$build/vpx.done"; done_
+        touch "$build/vpx-r$DEPS_REVISION.done"; done_
     fi
 
-    if [ ! -f "$build/dav1d.done" ]; then
+    if [ ! -f "$build/dav1d-r$DEPS_REVISION.done" ]; then
         log dav1d
         cat > "$build/dav1d-cross.txt" <<EOF
 [binaries]
@@ -149,7 +155,7 @@ EOF
             --libdir=lib -Ddefault_library=static -Denable_tools=false -Denable_tests=false -Dbuildtype=release > "$build/dav1d.log" 2>&1 &&
         ninja -C "$build/dav1d" >> "$build/dav1d.log" 2>&1 && ninja -C "$build/dav1d" install >> "$build/dav1d.log" 2>&1 ||
             { tail -60 "$build/dav1d.log"; exit 1; }
-        touch "$build/dav1d.done"; done_
+        touch "$build/dav1d-r$DEPS_REVISION.done"; done_
     fi
 
     if [ ! -f "$build/ffmpeg.done" ]; then

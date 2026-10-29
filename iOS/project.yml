@@ -1,0 +1,128 @@
+# Generates Jethriki.xcodeproj: run `xcodegen` in this folder after iOS/scripts/prepare-python.sh and with
+# iOS/build/ffmpeg/JethrikiFFmpeg.xcframework in place (iOS/scripts/build-ffmpeg.sh or the CI artifact).
+name: Jethriki
+options:
+  bundleIdPrefix: com.dustalexw
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "2.10.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER: NO
+targets:
+  Jethriki:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes: ["**/*.entitlements", "Info.plist"]
+      - path: ../Sources/YTDLPStudio/Models
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Services/ChapterTagger.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Services/CommandBuilder.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Services/CommentChapterParser.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Services/DownloadManager.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Services/MetadataFetcher.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Services/ProcessRunner.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Services/RingtoneShare.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Services/ToolLocator.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Views/CommentChapterPicker.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Views/OptionCategory.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Views/OptionsViews.swift
+        group: Shared
+      - path: ../Sources/YTDLPStudio/Views/Theme.swift
+        group: Shared
+      # Python code and packages, copied into the app as folders.
+      - path: Python/app
+        type: folder
+        buildPhase: resources
+      - path: build/app_packages
+        type: folder
+        buildPhase: resources
+      - path: Resources/tools
+        type: folder
+        buildPhase: resources
+      - path: Resources/THIRD-PARTY-NOTICES.md
+        buildPhase: resources
+    dependencies:
+      - framework: build/Python.xcframework
+        embed: true
+      - framework: build/ffmpeg/JethrikiFFmpeg.xcframework
+        embed: true
+      - target: JethrikiShare
+      - sdk: JavaScriptCore.framework
+      - sdk: WebKit.framework
+      - sdk: AVFoundation.framework
+    settings:
+      base:
+        PRODUCT_NAME: Jethriki
+        PRODUCT_BUNDLE_IDENTIFIER: com.dustalexw.jethriki
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/Jethriki.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: App/Engine/Jethriki-Bridging-Header.h
+        HEADER_SEARCH_PATHS: ["\"$(BUILT_PRODUCTS_DIR)/Python.framework/Headers\""]
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # Python and FFmpeg need these exported for ctypes lookups and debugging; keep the symbol table.
+        STRIP_STYLE: non-global
+        ENABLE_TESTABILITY: YES
+    postCompileScripts:
+      - name: Install Python standard library
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          # Unsigned (CI) builds still need the extension-module frameworks signed: ad hoc, re-signed on install.
+          if [ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then export EXPANDED_CODE_SIGN_IDENTITY=-; fi
+          source "$PROJECT_DIR/build/Python.xcframework/build/utils.sh"
+          install_python build/Python.xcframework
+  JethrikiShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShareExtension
+        excludes: ["*.entitlements", "Info.plist"]
+    settings:
+      base:
+        PRODUCT_NAME: JethrikiShare
+        PRODUCT_BUNDLE_IDENTIFIER: com.dustalexw.jethriki.share
+        INFOPLIST_FILE: ShareExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/JethrikiShare.entitlements
+        TARGETED_DEVICE_FAMILY: "1,2"
+  JethrikiTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: Jethriki
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dustalexw.jethriki.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Jethriki.app/Jethriki"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Jethriki:
+    build:
+      targets:
+        Jethriki: all
+        JethrikiTests: [test]
+    test:
+      targets: [JethrikiTests]
+      gatherCoverageData: false
