@@ -1,0 +1,41 @@
+name: iOS build
+on:
+  push:
+    branches: [main]
+    paths: ['iOS/**', 'Sources/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['iOS/**', 'Sources/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  ffmpeg:
+    name: FFmpeg for iOS
+    runs-on: macos-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - name: Reuse an earlier build of the same sources
+        id: cache
+        uses: actions/cache@v5
+        with:
+          path: iOS/build/ffmpeg/JethrikiFFmpeg.xcframework
+          key: ios-ffmpeg-${{ hashFiles('iOS/scripts/build-ffmpeg.sh', 'iOS/FFmpeg/**') }}
+      - name: Install build tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: brew install cmake meson ninja pkg-config autoconf automake libtool
+      - name: Build FFmpeg and codecs for device and simulator
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: iOS/scripts/build-ffmpeg.sh iOS/build/ffmpeg
+      - name: Pack framework
+        run: cd iOS/build/ffmpeg && ditto -c -k --keepParent JethrikiFFmpeg.xcframework JethrikiFFmpeg.xcframework.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: JethrikiFFmpeg-xcframework
+          path: iOS/build/ffmpeg/JethrikiFFmpeg.xcframework.zip
+          if-no-files-found: error
