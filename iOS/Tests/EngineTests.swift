@@ -190,12 +190,17 @@ final class EngineTests: XCTestCase {
         options.mode = .audio
         options.audioFormat = .flac
         options.outputDirectory = Self.work.appendingPathComponent("cancel").path
-        // A very long audio filter keeps FFmpeg busy long enough to cancel it.
-        options.extraArgs = "--enable-file-urls --postprocessor-args \"ExtractAudio:-af aloop=loop=-1:size=2e9,atrim=end=3000\""
+        // Looping the audio for 10 hours keeps FFmpeg busy far longer than any computer needs to cancel it.
+        options.extraArgs = "--enable-file-urls --postprocessor-args \"ExtractAudio:-af aloop=loop=-1:size=2e9,atrim=end=36000\""
         let manager = DownloadManager()
         manager.enqueue(urls: [Self.clip.absoluteString], options: options, tools: ToolLocator().snapshot()!)
         let job = manager.jobs[0]
-        try await Task.sleep(nanoseconds: 6_000_000_000)
+        // Cancel once FFmpeg is converting, rather than after a fixed wait a fast Mac can outrun.
+        let started = Date().addingTimeInterval(60)
+        while !job.log.contains(where: { $0.contains("[ExtractAudio] Destination") }) && !job.status.isDone && Date() < started {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        try await Task.sleep(nanoseconds: 1_000_000_000)
         manager.cancel(job)
         let deadline = Date().addingTimeInterval(30)
         while !job.status.isDone && Date() < deadline { try await Task.sleep(nanoseconds: 200_000_000) }
