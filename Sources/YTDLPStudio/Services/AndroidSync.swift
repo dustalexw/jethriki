@@ -158,9 +158,24 @@ enum AndroidSync {
         let mkdir = try await shell("mkdir -p \(quote(folder))")
         try failIfDeviceError(mkdir, "Couldn't open the phone's Ringtones folder.")
 
+        // Pushed under a hidden temporary name, checked, then renamed: a cable pulled or Wi-Fi dropped mid-copy
+        // never leaves a half-written tone for Android to list in its sound picker.
+        let part = folder + "/." + name + ".jethriki-part"
         log("adb push \(fileName)")
-        let push = try await adb(adbPath, base + ["push", path, folder + "/" + name])
-        try failIfDeviceError(push, "Couldn't copy the tone to the phone.")
+        do {
+            let push = try await adb(adbPath, base + ["push", path, part])
+            try failIfDeviceError(push, "Couldn't copy the tone to the phone.")
+            let size = try await shell("stat -c %s \(quote(part))")
+            let local = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? NSNumber)?.intValue
+            guard size.status == 0, let local, Int(size.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) == local else {
+                throw RingtoneError("The tone arrived incomplete on the phone. Check the cable or Wi-Fi connection and try again.")
+            }
+            let move = try await shell("mv -f \(quote(part)) \(quote(folder + "/" + name))")
+            try failIfDeviceError(move, "The phone wouldn't save the tone.")
+        } catch {
+            _ = try? await adb(adbPath, base + ["shell", "rm -f \(quote(part))"])
+            throw error
+        }
 
         // Ask Android to index the new file; some versions print an error here even though scanning works.
         let scan = try? await shell("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d \(quote("file://" + scanFolder + "/" + name))")

@@ -89,8 +89,21 @@ public static class Android {
         var made = await Shell("mkdir -p " + Quote(folder));
         if (made.ExitCode != 0) throw new AndroidException($"The phone refused to create the {(notification ? "Notifications" : "Ringtones")} folder: " + First(made));
         log?.Invoke($"[Android] Copying {name} to {device.Model} over {device.Connection}");
-        var pushed = Check(await RunAsync(["-s", device.Serial, "push", path, remote], ct), device);
-        if (pushed.ExitCode != 0) throw new AndroidException("Copying to the phone failed: " + First(pushed));
+        // Pushed under a hidden temporary name, checked, then renamed: a cable pulled or Wi-Fi dropped mid-copy
+        // never leaves a half-written tone for Android to list in its sound picker.
+        string part = folder + "/." + name + ".jethriki-part";
+        try {
+            var pushed = Check(await RunAsync(["-s", device.Serial, "push", path, part], ct), device);
+            if (pushed.ExitCode != 0) throw new AndroidException("Copying to the phone failed: " + First(pushed));
+            var size = await Shell("stat -c %s " + Quote(part));
+            if (size.ExitCode != 0 || size.Stdout.Trim() != new FileInfo(path).Length.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                throw new AndroidException("The tone arrived incomplete on the phone. Check the cable or Wi-Fi connection and try again.");
+            var moved = await Shell("mv -f " + Quote(part) + " " + Quote(remote));
+            if (moved.ExitCode != 0) throw new AndroidException("The phone wouldn't save the tone: " + First(moved));
+        } catch (AndroidException) {
+            try { await RunAsync(["-s", device.Serial, "shell", "rm -f " + Quote(part)], CancellationToken.None); } catch (AndroidException) { }
+            throw;
+        }
         log?.Invoke("[Android] Asking the phone to index the new tone");
         try { await Shell("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d " + Quote("file://" + (notification ? NotificationsStorageFolder : StorageFolder) + "/" + Uri.EscapeDataString(name))); } catch (AndroidException) { }
         string where = "_display_name='" + name.Replace("'", "''") + "'";

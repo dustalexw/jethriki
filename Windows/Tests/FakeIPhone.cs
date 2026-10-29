@@ -23,6 +23,12 @@ sealed class FakeIPhone : IDisposable {
     public readonly ConcurrentDictionary<string, byte[]> Files = new();
     public readonly ConcurrentDictionary<string, bool> Folders = new() { ["/"] = true };
     public bool Trusted = true, AlsoOnWifi, Restarted;
+    /// Like a locked phone still showing "Trust This Computer?": StartSession is never answered.
+    public bool StallSession;
+    /// Like Wi-Fi dropping mid-transfer: the AFC connection is cut when a write reaches a file whose path ends with this.
+    public string? DropWritesTo;
+    /// Like older iOS versions: renaming onto an existing file fails with "object exists" (16).
+    public bool RenameRefusesExisting;
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
     public string Address => "127.0.0.1:" + Port;
 
@@ -122,6 +128,7 @@ sealed class FakeIPhone : IDisposable {
                     else reply["Value"] = Values();
                     break;
                 case "StartSession":
+                    if (StallSession) { await Task.Delay(Timeout.Infinite, stop.Token); return; }
                     if (!Trusted || request.GetValueOrDefault("HostID") as string != (string)PairRecord["HostID"]) { reply["Error"] = "InvalidHostID"; break; }
                     reply["SessionID"] = Guid.NewGuid().ToString(); reply["EnableSessionSSL"] = true;
                     await WritePlist(s, reply);
@@ -201,6 +208,7 @@ sealed class FakeIPhone : IDisposable {
                 case 16: { // FileRefWrite: the handle is in the header, the data after it
                     ulong handle = BinaryPrimitives.ReadUInt64LittleEndian(head);
                     if (!handles.TryGetValue(handle, out var h) || !h.Write) { await Status(7); break; }
+                    if (DropWritesTo != null && h.Path.EndsWith(DropWritesTo)) { h.Data.Write(payload.AsSpan(0, payload.Length / 2)); s.Close(); return; }
                     h.Data.Write(payload); await Status(0); break;
                 }
                 case 20: { // FileRefClose
@@ -210,6 +218,12 @@ sealed class FakeIPhone : IDisposable {
                 }
                 case 8: { // RemovePath
                     var p = Path0(head); bool removed = Files.TryRemove(p, out _) | Folders.TryRemove(p, out _); await Status(removed ? 0UL : 8UL); break;
+                }
+                case 24: { // RenamePath: from and to, NUL-terminated
+                    string from = Path0(head), to = Path0(head, Array.IndexOf(head, (byte)0) + 1);
+                    if (!Files.TryGetValue(from, out var moved)) { await Status(8); break; }
+                    if (RenameRefusesExisting && Files.ContainsKey(to)) { await Status(16); break; }
+                    Files[to] = moved; Files.TryRemove(from, out _); await Status(0); break;
                 }
                 case 10: { // GetFileInfo
                     var p = Path0(head); string info;

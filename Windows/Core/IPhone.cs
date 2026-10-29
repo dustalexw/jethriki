@@ -15,7 +15,7 @@ public sealed record IPhoneDevice(int DeviceId, string Udid, bool Wifi, string N
 }
 
 /// A problem the user can fix (plug in, unlock, trust, install the Apple driver), worded for them.
-public sealed class IPhoneException(string message, Exception? inner = null) : Exception(message, inner);
+public class IPhoneException(string message, Exception? inner = null) : Exception(message, inner);
 
 /// Installs ringtones directly onto an iPhone, the way an iTunes tone sync does: the .m4r goes into
 /// /iTunes_Control/Ringtones and is listed in /iTunes_Control/iTunes/Ringtones.plist. iOS reads that list
@@ -24,6 +24,13 @@ public sealed class IPhoneException(string message, Exception? inner = null) : E
 /// beyond the Apple USB driver on Windows (Apple Devices or iTunes) and usbmuxd on Linux.
 public static class IPhone {
     public const string TonesFolder = "/iTunes_Control/Ringtones", ListFolder = "/iTunes_Control/iTunes", ListPath = ListFolder + "/Ringtones.plist";
+    /// How long usbmuxd and lockdownd get to answer one request. A locked phone, or one still showing
+    /// "Trust This Computer?", can leave a request unanswered; this turns that into a message instead of a hang.
+    public static TimeSpan HandshakeTimeout { get; set; } = TimeSpan.FromSeconds(5);
+    /// How long one AFC request (up to 1 MB of the tone) may take before the connection counts as dropped.
+    public static TimeSpan TransferTimeout { get; set; } = TimeSpan.FromSeconds(20);
+    internal const string NotAnswering = "The iPhone isn't answering. Unlock it, tap Trust if it asks, then try again.";
+    internal const string Dropped = "The connection to the iPhone dropped. Check the cable or Wi-Fi, unlock the iPhone and try again. Its ringtone list was left as it was.";
 
     public static async Task<IReadOnlyList<IPhoneDevice>> ListAsync(CancellationToken cancellation = default) {
         var found = new List<IPhoneDevice>();
@@ -55,8 +62,10 @@ public static class IPhone {
         var existing = await afc.ReadFileAsync(ListPath, cancellation);
         var (list, fileName) = RingtoneList.Add(existing, name, (long)Math.Round(seconds * 1000));
         log?.Invoke($"[iPhone] Copying {Path.GetFileName(path)} to {device.Name} over {device.Connection} as {fileName}");
-        await afc.WriteFileAsync(TonesFolder + "/" + fileName, audio, cancellation);
-        await afc.WriteFileAsync(ListPath, list, cancellation);
+        // The tone goes in first and the list last, each written under a temporary name, read back, and renamed
+        // into place: a dropped connection never leaves a half-written tone or a damaged ringtone list.
+        await afc.WriteFileAtomicAsync(TonesFolder + "/" + fileName, audio, cancellation);
+        await afc.WriteFileAtomicAsync(ListPath, list, cancellation);
         log?.Invoke($"[iPhone] Added “{name}” to the ringtone list. It appears in Settings › Sounds after the iPhone restarts.");
         return name;
     }
@@ -135,14 +144,19 @@ static class Usbmux {
         try {
             if (address is { Length: > 0 } && address.Contains(':') && !address.StartsWith('/')) {
                 int colon = address.LastIndexOf(':');
-                var tcp = new TcpClient(); await tcp.ConnectAsync(address[..colon], int.Parse(address[(colon + 1)..]), cancellation);
+                var tcp = new TcpClient();
+                try { await Deadline.RunAsync(t => tcp.ConnectAsync(address[..colon], int.Parse(address[(colon + 1)..]), t).AsTask(), IPhone.HandshakeTimeout, IPhone.NotAnswering, cancellation); }
+                catch { tcp.Dispose(); throw; }
                 return tcp.GetStream();
             }
             if (address is not { Length: > 0 } && OperatingSystem.IsWindows()) {
-                var tcp = new TcpClient(); await tcp.ConnectAsync(IPAddress.Loopback, 27015, cancellation); return tcp.GetStream();
+                var tcp = new TcpClient();
+                try { await Deadline.RunAsync(t => tcp.ConnectAsync(IPAddress.Loopback, 27015, t).AsTask(), IPhone.HandshakeTimeout, IPhone.NotAnswering, cancellation); }
+                catch { tcp.Dispose(); throw; }
+                return tcp.GetStream();
             }
             var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-            try { await socket.ConnectAsync(new UnixDomainSocketEndPoint(address is { Length: > 0 } ? address : "/var/run/usbmuxd"), cancellation); }
+            try { await Deadline.RunAsync(t => socket.ConnectAsync(new UnixDomainSocketEndPoint(address is { Length: > 0 } ? address : "/var/run/usbmuxd"), t).AsTask(), IPhone.HandshakeTimeout, IPhone.NotAnswering, cancellation); }
             catch { socket.Dispose(); throw; }
             return new NetworkStream(socket, ownsSocket: true);
         } catch (SocketException error) {
@@ -152,7 +166,10 @@ static class Usbmux {
         }
     }
 
-    static async Task<Dictionary<string, object>> RequestAsync(Stream s, Dictionary<string, object> message, CancellationToken cancellation) {
+    static Task<Dictionary<string, object>> RequestAsync(Stream s, Dictionary<string, object> message, CancellationToken cancellation) =>
+        Deadline.RunAsync(t => ExchangeAsync(s, message, t), IPhone.HandshakeTimeout, IPhone.NotAnswering, cancellation);
+
+    static async Task<Dictionary<string, object>> ExchangeAsync(Stream s, Dictionary<string, object> message, CancellationToken cancellation) {
         message["ClientVersionString"] = "Jethriki"; message["ProgName"] = "Jethriki"; message["kLibUSBMuxVersion"] = 3L;
         var body = Plist.ToXml(message); var packet = new byte[16 + body.Length];
         BinaryPrimitives.WriteUInt32LittleEndian(packet, (uint)packet.Length);
@@ -200,21 +217,24 @@ static class Usbmux {
 /// A length-prefixed (big-endian uint32) property-list channel: lockdownd and most of its services.
 sealed class PlistChannel(Stream stream) : IAsyncDisposable {
     public Stream Stream { get; set; } = stream;
+    /// Every exchange is bounded, so a phone that stops answering (locked, or waiting on the Trust prompt) can't hang the app.
+    public TimeSpan Timeout { get; init; } = IPhone.HandshakeTimeout;
     public async Task SendAsync(Dictionary<string, object> message, CancellationToken cancellation) {
         var body = Plist.ToXml(message); var packet = new byte[4 + body.Length];
         BinaryPrimitives.WriteUInt32BigEndian(packet, (uint)body.Length); body.CopyTo(packet, 4);
         await Stream.WriteAsync(packet, cancellation); await Stream.FlushAsync(cancellation);
     }
-    public async Task<Dictionary<string, object>> ReceiveAsync(CancellationToken cancellation) {
+    public Task<Dictionary<string, object>> ReceiveAsync(CancellationToken cancellation) =>
+        Deadline.RunAsync(ReadAsync, Timeout, IPhone.NotAnswering, cancellation);
+    async Task<Dictionary<string, object>> ReadAsync(CancellationToken cancellation) {
         var length = new byte[4]; await Stream.ReadExactlyAsync(length, cancellation);
         int size = (int)BinaryPrimitives.ReadUInt32BigEndian(length);
         if (size > 16 << 20) throw new IOException("The iPhone sent an invalid reply.");
         var body = new byte[size]; await Stream.ReadExactlyAsync(body, cancellation);
         return Plist.ParseDict(body);
     }
-    public async Task<Dictionary<string, object>> RequestAsync(Dictionary<string, object> message, CancellationToken cancellation) {
-        await SendAsync(message, cancellation); return await ReceiveAsync(cancellation);
-    }
+    public Task<Dictionary<string, object>> RequestAsync(Dictionary<string, object> message, CancellationToken cancellation) =>
+        Deadline.RunAsync(async t => { await SendAsync(message, t); return await ReadAsync(t); }, Timeout, IPhone.NotAnswering, cancellation);
     public ValueTask DisposeAsync() => Stream.DisposeAsync();
 }
 
@@ -263,11 +283,13 @@ sealed class Lockdown : IAsyncDisposable {
         var certificate = X509CertificateLoader.LoadPkcs12(pem.Export(X509ContentType.Pkcs12), null);
         var tls = new SslStream(inner, leaveInnerStreamOpen: false, (_, _, _, _) => true, (_, _, _, _, _) => certificate);
         try {
-            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions {
+            await Deadline.RunAsync(t => tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions {
                 TargetHost = "", ClientCertificates = [certificate], EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck
-            }, cancellation);
+            }, t), IPhone.HandshakeTimeout, IPhone.NotAnswering, cancellation);
             return tls;
+        } catch (IPhoneException) {
+            await tls.DisposeAsync(); throw;
         } catch (Exception error) when (error is AuthenticationException or IOException) {
             await tls.DisposeAsync();
             throw new IPhoneException("The iPhone rejected this computer's pairing. On the iPhone, open Settings › General › Transfer or Reset › Reset Location & Privacy, then reconnect and tap Trust.", error);
@@ -291,13 +313,36 @@ sealed class Lockdown : IAsyncDisposable {
 
 /// Apple File Conduit: the phone's media file service (com.apple.afc).
 sealed class Afc(Stream stream) : IAsyncDisposable {
-    const ulong Status = 1, RemovePath = 8, MakeDir = 9, FileOpen = 13, Read = 15, Write = 16, FileClose = 20;
+    const ulong Status = 1, RemovePath = 8, MakeDir = 9, FileOpen = 13, Read = 15, Write = 16, FileClose = 20, RenamePath = 24;
     const int HeaderSize = 40, Chunk = 1 << 20;
-    const ulong ObjectNotFound = 8;
+    const ulong ObjectNotFound = 8, ObjectExists = 16;
+    /// Suffix of the temporary file a write goes to before it is renamed into place.
+    public const string PartSuffix = ".jethriki-part";
     static readonly byte[] Magic = "CFA6LPAA"u8.ToArray();
     ulong packet;
 
+    /// Set once a request times out or the connection breaks: the stream is then out of step with the phone,
+    /// so later requests fail at once instead of each waiting out the timeout.
+    bool broken;
+
     async Task<byte[]?> OperationAsync(ulong operation, byte[] header, byte[]? payload, CancellationToken cancellation, bool missingIsNull = false) {
+        if (broken) throw new IPhoneException(IPhone.Dropped);
+        try {
+            return await Deadline.RunAsync(async t => {
+                try { return await ExchangeAsync(operation, header, payload, t, missingIsNull); }
+                catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException && !t.IsCancellationRequested) {
+                    throw new IPhoneException(IPhone.Dropped, error);
+                }
+            }, IPhone.TransferTimeout, IPhone.Dropped, cancellation);
+        } catch (Exception error) when (error is not StatusException) { broken = true; throw; }
+    }
+
+    /// Thrown for an AFC status reply other than success, so callers can react to specific codes.
+    sealed class StatusException(ulong status) : IPhoneException($"The iPhone couldn't save the ringtone (file service error {status}). Unlock it and try again.") {
+        public ulong Status { get; } = status;
+    }
+
+    async Task<byte[]?> ExchangeAsync(ulong operation, byte[] header, byte[]? payload, CancellationToken cancellation, bool missingIsNull) {
         payload ??= [];
         var p = new byte[HeaderSize + header.Length + payload.Length];
         Magic.CopyTo(p, 0);
@@ -317,7 +362,7 @@ sealed class Afc(Stream stream) : IAsyncDisposable {
         if (op == Status) {
             ulong status = data.Length >= 8 ? BinaryPrimitives.ReadUInt64LittleEndian(data) : 0;
             if (status == ObjectNotFound && missingIsNull) return null;
-            if (status != 0) throw new IPhoneException($"The iPhone couldn't save the ringtone (file service error {status}). Unlock it and try again.");
+            if (status != 0) throw new StatusException(status);
             return [];
         }
         return data;
@@ -356,5 +401,44 @@ sealed class Afc(Stream stream) : IAsyncDisposable {
 
     public async Task RemoveAsync(string path, CancellationToken cancellation) => await OperationAsync(RemovePath, CString(path), null, cancellation, missingIsNull: true);
 
+    public async Task RenameAsync(string from, string to, CancellationToken cancellation) => await OperationAsync(RenamePath, [.. CString(from), .. CString(to)], null, cancellation);
+
+    /// Writes to `path + PartSuffix`, reads it back and compares it byte for byte, then renames it over `path`.
+    /// Until that rename, the file at `path` (if any) is untouched; a failed write removes its temporary file.
+    public async Task WriteFileAtomicAsync(string path, byte[] contents, CancellationToken cancellation) {
+        string part = path + PartSuffix;
+        await RemoveAsync(part, cancellation);   // left over from an earlier transfer that was cut off
+        try {
+            await WriteFileAsync(part, contents, cancellation);
+            var written = await ReadFileAsync(part, cancellation);
+            if (written == null || !written.AsSpan().SequenceEqual(contents))
+                throw new IPhoneException("The ringtone arrived damaged on the iPhone. Check the cable or Wi-Fi and try again. The iPhone's ringtone list was left as it was.");
+            try { await RenameAsync(part, path, cancellation); }
+            catch (StatusException error) when (error.Status == ObjectExists) {
+                // Some iOS versions won't rename over an existing file: replace it in two steps instead.
+                await RemoveAsync(path, cancellation); await RenameAsync(part, path, cancellation);
+            }
+        } catch (Exception) when (!cancellation.IsCancellationRequested) {
+            try { await RemoveAsync(part, CancellationToken.None); } catch (Exception cleanup) when (cleanup is IPhoneException or IOException or ObjectDisposedException) { }
+            throw;
+        }
+    }
+
     public ValueTask DisposeAsync() => stream.DisposeAsync();
+}
+
+/// Runs one step of a conversation with the phone with a time limit. Running out of time becomes an
+/// IPhoneException the user can act on; cancellation by the caller still surfaces as OperationCanceledException.
+static class Deadline {
+    public static async Task<T> RunAsync<T>(Func<CancellationToken, Task<T>> work, TimeSpan limit, string message, CancellationToken cancellation) {
+        using var timer = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        timer.CancelAfter(limit);
+        try { return await work(timer.Token); }
+        catch (OperationCanceledException error) when (!cancellation.IsCancellationRequested) { throw new IPhoneException(message, error); }
+        catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException && timer.IsCancellationRequested && !cancellation.IsCancellationRequested) {
+            throw new IPhoneException(message, error);
+        }
+    }
+    public static Task RunAsync(Func<CancellationToken, Task> work, TimeSpan limit, string message, CancellationToken cancellation) =>
+        RunAsync<bool>(async t => { await work(t); return true; }, limit, message, cancellation);
 }

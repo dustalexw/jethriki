@@ -69,6 +69,34 @@ check(l1 == ["abc", "[dl] 1%"] && l2 == ["partial"], "LineBuffer splits on CR an
 
 // MARK: - 2. Tool detection
 
+section("Cancelling stops the whole process tree")
+do {
+    // A parent and a grandchild that both ignore SIGINT and SIGTERM, like FFmpeg busy flushing a slow encode:
+    // only the final SIGKILL stops them, and it must reach the grandchild too, not just the direct child.
+    let pidFile = NSTemporaryDirectory() + "studio-tree-\(getpid()).pid"
+    try? FileManager.default.removeItem(atPath: pidFile)
+    let runner = ProcessRunner(executable: "/bin/sh",
+                               arguments: ["-c", "trap '' INT TERM; /bin/sh -c 'sleep 300 & echo $! > \"$0\"; wait' '\(pidFile)' & wait"],
+                               environment: ProcessInfo.processInfo.environment)
+    var exited = false
+    runner.onExit = { _ in exited = true }
+    try? runner.start()
+    _ = waitUntil(5) { FileManager.default.fileExists(atPath: pidFile) }
+    let grandchild = pid_t((try? String(contentsOfFile: pidFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 0
+    let middle = ProcessRunner.children(of: runner.pid)
+    check(grandchild > 0 && !middle.contains(grandchild) && middle.contains { ProcessRunner.children(of: $0).contains(grandchild) },
+          "the grandchild is found as a descendant", "children \(middle), grandchild \(grandchild)")
+    runner.terminate()
+    // Gone, or a zombie waiting for a parent that never reaps it (this sandbox's init doesn't).
+    func alive(_ pid: pid_t) -> Bool {
+        guard kill(pid, 0) == 0 else { return false }
+        let stat = (try? String(contentsOfFile: "/proc/\(pid)/stat", encoding: .utf8)) ?? ""
+        return !(stat.split(separator: ")").last?.trimmingCharacters(in: .whitespaces).hasPrefix("Z") ?? false)
+    }
+    check(waitUntil(10) { exited } && waitUntil(3) { !alive(grandchild) }, "cancel stops the grandchild as well as the child")
+    try? FileManager.default.removeItem(atPath: pidFile)
+}
+
 section("Tool detection")
 let tools = ToolLocator()
 check(tools.ytdlpPath != nil, "found yt-dlp at \(tools.ytdlpPath ?? "nil")")
@@ -314,6 +342,13 @@ do {
       push) mkdir -p "$PHONE"; echo "$3" >> "$PHONE/push.log"; cp "$2" "$PHONE/$(basename "$3")"; echo "1 file pushed" ;;
       shell)
         echo "$2" >> "$PHONE/shell.log"
+        eval "set -- $2"
+        case "$1" in
+          stat) wc -c < "$PHONE/$(basename "$4")" ;;
+          mv) mv -f "$PHONE/$(basename "$3")" "$PHONE/$(basename "$4")" ;;
+          rm) rm -f "$PHONE/$(basename "$3")" ;;
+        esac
+        set -- shell "$(tail -n1 "$PHONE/shell.log")"
         case "$2" in
           "content query"*) echo "Row: 0 _id=42" ;;
           "settings put"*) echo "$2" >> "$PHONE/settings.log" ;;
@@ -331,13 +366,16 @@ do {
     if let target = listed.first {
         let sent = blocking { try await AndroidSync.sendRingtone(path: ogg, to: target, setAsRingtone: true) }
         check((try? sent.get()) == "tone" && FileManager.default.contents(atPath: phone + "/tone.ogg") == oggData, "sendRingtone copies the tone to the phone", "\(sent)")
+        check(!FileManager.default.fileExists(atPath: phone + "/.tone.ogg.jethriki-part") && ((try? String(contentsOfFile: phone + "/push.log", encoding: .utf8)) ?? "").contains(".tone.ogg.jethriki-part"),
+              "sendRingtone pushes under a temporary name and renames it into place")
         let settings = (try? String(contentsOfFile: phone + "/settings.log", encoding: .utf8)) ?? ""
         check(settings.contains("settings put system ringtone content://media/external/audio/media/42"), "sendRingtone sets the ringtone from the media id", settings)
         let note = blocking { try await AndroidSync.sendRingtone(path: ogg, to: target, setAsRingtone: true, notification: true) }
         let pushed = (try? String(contentsOfFile: phone + "/push.log", encoding: .utf8)) ?? ""
         let shellLog = (try? String(contentsOfFile: phone + "/shell.log", encoding: .utf8)) ?? ""
         let settings2 = (try? String(contentsOfFile: phone + "/settings.log", encoding: .utf8)) ?? ""
-        check((try? note.get()) == "tone" && pushed.contains("/sdcard/Notifications/tone.ogg")
+        check((try? note.get()) == "tone" && pushed.contains("/sdcard/Notifications/.tone.ogg.jethriki-part")
+              && shellLog.contains("mv -f '/sdcard/Notifications/.tone.ogg.jethriki-part' '/sdcard/Notifications/tone.ogg'")
               && shellLog.contains("/storage/emulated/0/Notifications/tone.ogg") && shellLog.contains("is_notification:i:1"),
               "notification send lands in the Notifications folder", pushed + shellLog)
         check(settings2.contains("settings put system notification_sound content://media/external/audio/media/42"),
