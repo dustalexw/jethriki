@@ -62,9 +62,18 @@ final class AppRouter: ObservableObject {
     @Published var tab: AppTab = .download
     @Published var incomingLinks: [String] = []
 
-    /// jethriki://add?url=https://… (also accepts the link itself after jethriki://).
+    /// jethriki://add?url=https://…, or jethriki://tab/queue (download, queue, library, settings).
     func open(_ url: URL) {
         guard url.scheme == "jethriki" else { return }
+        if url.host == "tab" {
+            switch url.lastPathComponent {
+            case "queue": tab = .queue
+            case "library": tab = .library
+            case "settings": tab = .settings
+            default: tab = .download
+            }
+            return
+        }
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let links = components?.queryItems?.filter { $0.name == "url" }.compactMap(\.value) ?? []
         receive(links)
