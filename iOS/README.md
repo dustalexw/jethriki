@@ -62,7 +62,7 @@ open Jethriki.xcodeproj
 ```
 
 Set your team under Signing & Capabilities for the Jethriki and JethrikiShare targets, then run.
-`xcodebuild test -scheme Jethriki -destination 'platform=iOS Simulator,name=iPhone 16'` runs the engine tests:
+`xcodebuild test -scheme Jethriki -destination 'platform=iOS Simulator,name=iPhone 17'` runs the engine tests:
 FFmpeg encoders, repeated and cancelled FFmpeg runs, yt-dlp, JavaScriptCore, and real downloads through the
 shared `DownloadManager` with the MP3, iPhone ringtone, Android ringtone, re-encode and trim settings.
 
