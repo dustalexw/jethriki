@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: Publish this version for Windows, macOS and Linux after all checks pass (never overwrites an existing release)
+        description: Publish this version for Windows, macOS, Linux and iOS after all checks pass (never overwrites an existing release)
         type: boolean
         default: false
 permissions:
@@ -139,10 +139,27 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+  version:
+    # Reusable workflows can't read env, so the version is passed on through a job output.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.v.outputs.value }}
+    steps:
+      - id: v
+        run: echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+  ios:
+    # The iOS app takes long to build, so it runs on its own for code changes (ios.yml) and here only for releases.
+    needs: version
+    uses: ./.github/workflows/ios.yml
+    with:
+      version: ${{ needs.version.outputs.value }}
+
   release:
-    # Runs only after all three platform builds pass. If GitHub fails to assign this job a runner,
+    # Runs only after all platform builds pass. If GitHub fails to assign this job a runner,
     # use "Re-run failed jobs": the verified builds are reused, nothing is rebuilt.
-    needs: [windows, macos, linux]
+    needs: [windows, macos, linux, ios]
     if: github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -155,7 +172,7 @@ jobs:
           pattern: Jethriki-${{ env.VERSION }}-*
           merge-multiple: true
           path: package
-      - name: Publish Windows, macOS and Linux packages
+      - name: Publish Windows, macOS, Linux and iOS packages
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -163,13 +180,14 @@ jobs:
           win="package/Jethriki-$VERSION-Windows-x64.zip"
           mac="package/Jethriki-$VERSION-macOS.zip"
           linux="package/Jethriki-$VERSION-Linux-x64.tar.gz"
+          ios="package/Jethriki-$VERSION-iOS.ipa"
           ls -l package
-          [[ -f "$win" && -f "$mac" && -f "$linux" ]] || { echo "::error::Missing a platform package"; exit 1; }
+          [[ -f "$win" && -f "$mac" && -f "$linux" && -f "$ios" ]] || { echo "::error::Missing a platform package"; exit 1; }
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             # Published releases are never replaced; bump VERSION at the top of this workflow instead.
             echo "::error::$tag is already published. Bump VERSION in .github/workflows/build.yml to release a new build."
             exit 1
           fi
-          gh release create "$tag" "$win" "$mac" "$linux" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Jethriki $VERSION — Windows, macOS and Linux" \
+          gh release create "$tag" "$win" "$mac" "$linux" "$ios" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Jethriki $VERSION — Windows, macOS, Linux and iOS" \
             --notes-file RELEASE-NOTES.md --latest
