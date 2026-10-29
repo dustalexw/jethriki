@@ -441,7 +441,11 @@ struct PlaylistOptionsView: View {
                 Picker("Download", selection: $o.playlistMode) {
                     ForEach(PlaylistMode.allCases) { Text($0.label).tag($0) }
                 }
+                #if os(macOS)
                 .pickerStyle(.radioGroup)
+                #else
+                .pickerStyle(.inline)
+                #endif
                 TextField("Items", text: $o.playlistItems, prompt: Text("All — or e.g. 1-5,8,10:20, -3::"))
                     .font(.system(.body, design: .monospaced))
                 Hint("Ranges are 1-based. “-3::” means the last three items; “::2” means every other item.")
