@@ -17,7 +17,11 @@ struct QueueTab: View {
             Group {
                 if downloads.jobs.isEmpty {
                     // On iPad the detail column says this, so the list stays clear.
-                    if sizeClass != .regular { emptyQueue.frame(maxWidth: .infinity, maxHeight: .infinity) }
+                    if sizeClass == .regular {
+                        Color.clear  // something has to be here for the column to show its title
+                    } else {
+                        emptyQueue.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 } else {
                     List(selection: $selection) {
                         ForEach(downloads.jobs.reversed()) { job in
