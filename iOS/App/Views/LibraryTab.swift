@@ -25,16 +25,10 @@ struct LibraryTab: View {
     var body: some View {
         NavigationSplitView {
             List(selection: selection) {
-                if files.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: "folder").font(.system(size: 40)).foregroundStyle(Theme.ribbonDiagonal)
-                        Text("No downloads yet").font(.headline)
-                        Text("Finished files appear here, and in the Files app under \(Device.filesLocation) › Jethriki.")
-                            .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 30)
-                    .listRowBackground(Color.clear)
+                if files.isEmpty && !split {
+                    emptyLibrary
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
                 }
                 ForEach(visible, id: \.self) { url in
                     if split {
@@ -63,12 +57,21 @@ struct LibraryTab: View {
                 if let selected, FileManager.default.fileExists(atPath: selected.path) {
                     FilePreview(url: selected, onDelete: { deleted(selected) })
                 } else {
-                    EmptyDetail(symbol: "play.rectangle", title: files.isEmpty ? "No downloads yet" : "Pick a file",
-                                message: files.isEmpty ? "" : "It plays here, with sharing and ringtone options at the top.")
+                    if files.isEmpty {
+                        emptyLibrary
+                    } else {
+                        EmptyDetail(symbol: "play.rectangle", title: "Pick a file",
+                                    message: "It plays here, with sharing and ringtone options at the top.")
+                    }
                 }
             }
         }
         .navigationSplitViewStyle(.balanced)
+    }
+
+    private var emptyLibrary: some View {
+        EmptyDetail(symbol: "folder", title: "No downloads yet",
+                    message: "Finished files appear here, and in the Files app under \(Device.filesLocation) › Jethriki.")
     }
 
     private func deleted(_ url: URL) {

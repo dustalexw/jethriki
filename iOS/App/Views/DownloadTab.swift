@@ -50,8 +50,8 @@ struct DownloadTab: View {
                         Spacer()
                         Button(action: startDownload) {
                             Label(urls.count > 1 ? "Download \(urls.count)" : "Download", systemImage: "arrow.down")
+                                .labelStyle(.titleAndIcon)
                                 .lineLimit(1)
-                                .fixedSize()
                         }
                         .buttonStyle(GlowButtonStyle())
                         .disabled(urls.isEmpty)

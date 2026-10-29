@@ -16,9 +16,8 @@ struct QueueTab: View {
         NavigationSplitView {
             Group {
                 if downloads.jobs.isEmpty {
-                    EmptyDetail(symbol: "tray", title: "Nothing in the queue",
-                                message: "Paste a link on the Download tab, or share one to Jethriki from Safari or YouTube.")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // On iPad the detail column says this, so the list stays clear.
+                    if sizeClass != .regular { emptyQueue.frame(maxWidth: .infinity, maxHeight: .infinity) }
                 } else {
                     List(selection: $selection) {
                         ForEach(downloads.jobs.reversed()) { job in
@@ -56,8 +55,12 @@ struct QueueTab: View {
                 if let job = selectedJob {
                     JobDetailView(job: job).id(job.id)
                 } else {
-                    EmptyDetail(symbol: "arrow.down.circle", title: downloads.jobs.isEmpty ? "No downloads" : "Pick a download",
-                                message: downloads.jobs.isEmpty ? "" : "Its progress, files and log appear here.")
+                    if downloads.jobs.isEmpty {
+                        emptyQueue
+                    } else {
+                        EmptyDetail(symbol: "arrow.down.circle", title: "Pick a download",
+                                    message: "Its progress, files and log appear here.")
+                    }
                 }
             }
         }
@@ -70,6 +73,11 @@ struct QueueTab: View {
             selectNewest(added: count > knownCount)
             knownCount = count
         }
+    }
+
+    private var emptyQueue: some View {
+        EmptyDetail(symbol: "tray", title: "Nothing in the queue",
+                    message: "Paste a link on the Download tab, or share one to Jethriki from Safari or YouTube.")
     }
 
     /// On a wide screen, show the newest download when one is added (or when nothing is showing). On a
