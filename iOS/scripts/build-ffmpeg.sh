@@ -170,7 +170,7 @@ EOF
               --extra-ldflags="-arch arm64 -target $target -isysroot $sdk -L$prefix/lib" \
               --pkg-config=pkg-config --pkg-config-flags=--static \
               --enable-pic --enable-static --disable-shared --disable-debug --disable-doc --disable-ffplay \
-              --disable-avdevice --disable-sdl2 --disable-xlib --disable-libxcb \
+              --disable-indevs --enable-indev=lavfi --disable-outdevs --disable-sdl2 --disable-xlib --disable-libxcb \
               --enable-gpl --enable-version3 --enable-videotoolbox --enable-audiotoolbox --enable-mbedtls \
               --enable-libx264 --enable-libx265 --enable-libvpx --enable-libsvtav1 --enable-libdav1d \
               --enable-libmp3lame --enable-libvorbis --enable-libopus > build.log 2>&1 &&
@@ -190,7 +190,7 @@ EOF
     "$cc" -dynamiclib -arch arm64 -target "$target" -isysroot "$sdk" -o "$fw/JethrikiFFmpeg" \
         -install_name @rpath/JethrikiFFmpeg.framework/JethrikiFFmpeg -Wl,-exported_symbols_list,"$build/exports.txt" \
         -Wl,-dead_strip $(cat "$build/fftools.txt") \
-        $(pkg-config --libs --static libavfilter libavformat libavcodec libswresample libswscale libavutil) \
+        $(pkg-config --libs --static libavdevice libavfilter libavformat libavcodec libswresample libswscale libavutil) \
         -lc++ -framework Foundation -framework CoreFoundation -framework CoreMedia -framework CoreVideo \
         -framework VideoToolbox -framework AudioToolbox -framework Security
     cp "$HERE/FFmpeg/jt_tools.h" "$fw/Headers/"
