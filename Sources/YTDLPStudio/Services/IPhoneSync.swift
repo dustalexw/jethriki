@@ -90,25 +90,69 @@ final class IPhoneSync: ObservableObject {
 
     /// Copies the ringtone onto the iPhone and returns its name.
     func install(path: String, on target: IPhoneTarget) async throws -> String {
-        try await run(target) { lib, device in try lib.install(device, path: path) }
+        try await run(target) { lib, device, progress in try lib.install(device, path: path, progress: progress) }
     }
 
     /// Restarts the iPhone, which is what makes iOS show newly added tones.
     func restart(_ target: IPhoneTarget) async throws {
-        try await run(target) { lib, device in try lib.restart(device) }
+        try await run(target) { lib, device, progress in try lib.restart(device, progress: progress) }
     }
 
-    private func run<T>(_ target: IPhoneTarget, _ work: @escaping (MobileDeviceLib, UnsafeMutableRawPointer) throws -> T) async throws -> T {
+    /// How long a step may go without progress before the iPhone counts as not answering. MobileDevice calls can
+    /// block indefinitely on a locked phone or one still showing "Trust This Computer?".
+    static let stallSeconds: TimeInterval = 15
+    static let notAnsweringMessage = "The iPhone isn't answering. Unlock it, tap Trust if it asks, then try again."
+
+    private func run<T>(_ target: IPhoneTarget, _ work: @escaping (MobileDeviceLib, UnsafeMutableRawPointer, @escaping () -> Void) throws -> T) async throws -> T {
         guard let lib else { throw RingtoneError(Self.unavailableMessage) }
         let key = await MainActor.run { self.handle(for: target.udid) }
         guard let key, UnsafeMutableRawPointer(bitPattern: key) != nil else {
             throw RingtoneError("\(target.name) isn't connected any more.")
         }
         return try await withCheckedThrowingContinuation { continuation in
+            let watchdog = Watchdog(stall: Self.stallSeconds) {
+                continuation.resume(throwing: RingtoneError(Self.notAnsweringMessage))
+            }
             queue.async {
-                continuation.resume(with: Result { try work(lib, UnsafeMutableRawPointer(bitPattern: key)!) })
+                // A late result after the watchdog has already answered is dropped; the serial queue then moves on.
+                let result = Result { try work(lib, UnsafeMutableRawPointer(bitPattern: key)!, watchdog.tick) }
+                if watchdog.finish() { continuation.resume(with: result) }
             }
         }
+    }
+}
+
+/// Fires `onStall` once if `tick()` isn't called for `stall` seconds, unless `finish()` is called first.
+/// Whichever of the two happens first wins; the other is ignored.
+private final class Watchdog {
+    private let lock = NSLock()
+    private var last = Date()
+    private var done = false
+    private let timer: DispatchSourceTimer
+
+    init(stall: TimeInterval, onStall: @escaping () -> Void) {
+        timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
+        timer.schedule(deadline: .now() + 1, repeating: 1)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let stalled = !self.done && Date().timeIntervalSince(self.last) > stall
+            if stalled { self.done = true }
+            self.lock.unlock()
+            if stalled { self.timer.cancel(); onStall() }
+        }
+        timer.resume()
+    }
+
+    func tick() { lock.lock(); last = Date(); lock.unlock() }
+
+    /// True if the work finished before the watchdog fired.
+    func finish() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !done else { return false }
+        done = true
+        timer.cancel()
+        return true
     }
 }
 
@@ -139,6 +183,9 @@ private final class MobileDeviceLib {
     let fileRead: @convention(c) (Ptr, UInt64, Ptr, UnsafeMutablePointer<UInt>) -> Int32
     let fileWrite: @convention(c) (Ptr, UInt64, UnsafeRawPointer, UInt) -> Int32
     let fileClose: @convention(c) (Ptr, UInt64) -> Int32
+    /// Used for writes that replace a file in one step; when missing, files are written in place as before.
+    let renamePath: (@convention(c) (Ptr, UnsafePointer<CChar>, UnsafePointer<CChar>) -> Int32)?
+    let removePath: (@convention(c) (Ptr, UnsafePointer<CChar>) -> Int32)?
 
     init?() {
         guard let handle = dlopen("/System/Library/PrivateFrameworks/MobileDevice.framework/MobileDevice", RTLD_NOW) else { return nil }
@@ -173,6 +220,7 @@ private final class MobileDeviceLib {
         startSession = g; stopSession = h; disconnect = i; copyValue = j; startService = k; serviceSocket = l
         serviceInvalidate = m; serviceSend = n; serviceReceive = o; afcOpen = p; afcClose = q; afcMakeDirectory = r
         fileOpen = s; fileRead = t; fileWrite = u; fileClose = v
+        renamePath = load("AFCRenamePath"); removePath = load("AFCRemovePath")
     }
 
     // MARK: Helpers
@@ -203,22 +251,31 @@ private final class MobileDeviceLib {
     }
 
     /// Pairing check and service start. The device must already be connected.
-    private func openService(_ device: Ptr, _ name: String) throws -> Ptr {
+    private func openService(_ device: Ptr, _ name: String, progress: () -> Void) throws -> Ptr {
         guard isPaired(device) != 0 else {
             throw RingtoneError("This Mac isn't trusted yet. Connect the iPhone with its cable, unlock it and tap Trust, then try again.")
         }
         try check(validatePairing(device), "Unlock your iPhone and try again")
+        progress()
         try check(startSession(device), "Unlock your iPhone and try again")
+        progress()
         defer { _ = stopSession(device) }
         var connection: Ptr?
         try check(startService(device, name as CFString, nil, &connection), "Unlock your iPhone and try again")
         guard let connection else { throw RingtoneError("The iPhone didn't start the \(name) service.") }
+        progress()
+        // Bound every read and write on the service, so a connection that drops mid-transfer (Wi-Fi sync)
+        // fails with an error instead of blocking forever.
+        var limit = timeval(tv_sec: 10, tv_usec: 0)
+        let socket = serviceSocket(connection)
+        setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &limit, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, &limit, socklen_t(MemoryLayout<timeval>.size))
         return connection
     }
 
     // MARK: Ringtone install
 
-    func install(_ device: Ptr, path: String) throws -> String {
+    func install(_ device: Ptr, path: String, progress: @escaping () -> Void) throws -> String {
         let fileName = (path as NSString).lastPathComponent
         guard let data = FileManager.default.contents(atPath: path) else { throw RingtoneError("Couldn't read \(fileName).") }
         guard let seconds = MP4.durationSeconds(data) else {
@@ -231,7 +288,8 @@ private final class MobileDeviceLib {
 
         try check(connect(device), "Couldn't reach the iPhone. Unlock it and try again")
         defer { _ = disconnect(device) }
-        let connection = try openService(device, "com.apple.afc")
+        progress()
+        let connection = try openService(device, "com.apple.afc", progress: progress)
         defer { serviceInvalidate(connection) }
 
         var afcHandle: Ptr?
@@ -242,14 +300,43 @@ private final class MobileDeviceLib {
         for folder in [RingtoneList.tonesFolder, RingtoneList.listFolder] {
             _ = folder.withCString { afcMakeDirectory(afc, $0) }   // already exists on most iPhones
         }
-        let existing = readFile(afc, RingtoneList.listPath)
+        let existing = readFile(afc, RingtoneList.listPath, progress: progress)
         let (plist, remoteName) = try RingtoneList.add(to: existing, name: name, milliseconds: Int((seconds * 1000).rounded()))
-        try writeFile(afc, RingtoneList.tonesFolder + "/" + remoteName, data)
-        try writeFile(afc, RingtoneList.listPath, plist)
+        // The tone goes in first and the list last, each under a temporary name, read back and renamed into place:
+        // a dropped connection never leaves a half-written tone or a damaged ringtone list on the phone.
+        try writeFileAtomically(afc, RingtoneList.tonesFolder + "/" + remoteName, data, progress: progress)
+        try writeFileAtomically(afc, RingtoneList.listPath, plist, progress: progress)
         return name
     }
 
-    private func readFile(_ afc: Ptr, _ path: String) -> Data? {
+    /// Suffix of the temporary file a write goes to before it is renamed into place.
+    static let partSuffix = ".jethriki-part"
+
+    /// Writes to `path + partSuffix`, reads it back and compares it byte for byte, then renames it over `path`.
+    /// Until that rename the file at `path` is untouched; a failed write removes its temporary file.
+    private func writeFileAtomically(_ afc: Ptr, _ path: String, _ data: Data, progress: () -> Void) throws {
+        guard let renamePath, let removePath else { return try writeFile(afc, path, data, progress: progress) }
+        let part = path + Self.partSuffix
+        _ = part.withCString { removePath(afc, $0) }   // left over from an earlier transfer that was cut off
+        do {
+            try writeFile(afc, part, data, progress: progress)
+            guard readFile(afc, part, progress: progress) == data else {
+                throw RingtoneError("The ringtone arrived damaged on the iPhone. Check the cable or Wi-Fi and try again. The iPhone's ringtone list was left as it was.")
+            }
+            var code = part.withCString { from in path.withCString { renamePath(afc, from, $0) } }
+            if code != 0 {
+                // Some iOS versions won't rename over an existing file: replace it in two steps instead.
+                _ = path.withCString { removePath(afc, $0) }
+                code = part.withCString { from in path.withCString { renamePath(afc, from, $0) } }
+            }
+            try check(code, "Couldn't save the tone on the iPhone")
+        } catch {
+            _ = part.withCString { removePath(afc, $0) }
+            throw error
+        }
+    }
+
+    private func readFile(_ afc: Ptr, _ path: String, progress: () -> Void) -> Data? {
         var ref: UInt64 = 0
         guard path.withCString({ fileOpen(afc, $0, 1, &ref) }) == 0 else { return nil }
         defer { _ = fileClose(afc, ref) }
@@ -261,11 +348,12 @@ private final class MobileDeviceLib {
             var length = UInt(capacity)
             guard fileRead(afc, ref, buffer, &length) == 0, length > 0 else { break }
             result.append(buffer.assumingMemoryBound(to: UInt8.self), count: Int(length))
+            progress()
         }
         return result
     }
 
-    private func writeFile(_ afc: Ptr, _ path: String, _ data: Data) throws {
+    private func writeFile(_ afc: Ptr, _ path: String, _ data: Data, progress: () -> Void) throws {
         var ref: UInt64 = 0
         try check(path.withCString { fileOpen(afc, $0, 3, &ref) }, "Couldn't create a file on the iPhone")
         defer { _ = fileClose(afc, ref) }
@@ -277,16 +365,18 @@ private final class MobileDeviceLib {
                 fileWrite(afc, ref, raw.baseAddress! + offset, UInt(end - offset))
             }
             try check(code, "Couldn't copy the tone to the iPhone")
+            progress()
             offset = end
         }
     }
 
     // MARK: Restart
 
-    func restart(_ device: Ptr) throws {
+    func restart(_ device: Ptr, progress: @escaping () -> Void) throws {
         try check(connect(device), "Couldn't reach the iPhone. Unlock it and try again")
         defer { _ = disconnect(device) }
-        let connection = try openService(device, "com.apple.mobile.diagnostics_relay")
+        progress()
+        let connection = try openService(device, "com.apple.mobile.diagnostics_relay", progress: progress)
         defer { serviceInvalidate(connection) }
 
         try check(serviceSend(connection, ["Request": "Restart"] as CFDictionary, 100), "Couldn't ask the iPhone to restart")

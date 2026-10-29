@@ -181,23 +181,19 @@ extension Ringtone {
             guard (path as NSString).pathExtension.lowercased() == "m4a", fm.fileExists(atPath: path) else { return path }
             let base = (path as NSString).deletingPathExtension
             var target = base + "." + fileExtension
-            if fm.fileExists(atPath: target) {
-                if keepExisting {
-                    var n = 2
-                    while fm.fileExists(atPath: "\(base) \(n).\(fileExtension)") { n += 1 }
-                    target = "\(base) \(n).\(fileExtension)"
-                } else {
-                    try? fm.removeItem(atPath: target)
-                }
+            if keepExisting, fm.fileExists(atPath: target) {
+                var n = 2
+                while fm.fileExists(atPath: "\(base) \(n).\(fileExtension)") { n += 1 }
+                target = "\(base) \(n).\(fileExtension)"
             }
-            do {
-                try fm.moveItem(atPath: path, toPath: target)
+            // rename(2) replaces an existing tone in one step, so a failure can never leave neither file behind
+            // (deleting the old tone first and then moving could).
+            if rename(path, target) == 0 {
                 log("[Ringtone] Saved \((target as NSString).lastPathComponent)")
                 return target
-            } catch {
-                log("[Ringtone] Could not rename to .\(fileExtension): \(error.localizedDescription)")
-                return path
             }
+            log("[Ringtone] Could not rename to .\(fileExtension): \(String(cString: strerror(errno)))")
+            return path
         }
     }
 }

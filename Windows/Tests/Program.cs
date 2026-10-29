@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
@@ -263,6 +264,7 @@ try {
             string onPhone = Path.Combine(adbState, "phone", "Ringtones", Path.GetFileName(androidTone));
             Check(sent == "/sdcard/Ringtones/" + Path.GetFileName(androidTone) && File.Exists(onPhone) && File.ReadAllBytes(onPhone).SequenceEqual(File.ReadAllBytes(androidTone)), "Android ringtone copied byte for byte into Ringtones");
             Check(!File.Exists(Path.Combine(adbState, "settings.txt")), "Sending without 'set as ringtone' leaves the phone settings alone");
+            Check(!Directory.GetFiles(Path.Combine(adbState, "phone"), "*.jethriki-part", SearchOption.AllDirectories).Any() && File.ReadAllText(Path.Combine(adbState, "log.txt")).Contains("mv -f"), "The tone is pushed under a temporary name and renamed into place");
             await Android.SendRingtoneAsync(phones[0], androidTone, true);
             Check(File.Exists(Path.Combine(adbState, "settings.txt")) && File.ReadAllText(Path.Combine(adbState, "settings.txt")).Contains("settings put system ringtone content://media/external/audio/media/42"), "Set as ringtone records the media id");
             Check(File.ReadAllText(Path.Combine(adbState, "log.txt")).Contains("is_ringtone:i:1"), "Tone is marked as a ringtone");
@@ -336,6 +338,30 @@ try {
         using var fresh = new FakeIPhone(); Environment.SetEnvironmentVariable("USBMUXD_SOCKET_ADDRESS", fresh.Address);
         await IPhone.InstallRingtoneAsync((await IPhone.ListAsync())[0], tone);
         Check(fresh.Files.Keys.Count(k => k.StartsWith(IPhone.TonesFolder + "/")) == 1 && fresh.Files.ContainsKey(IPhone.ListPath), "Works on a phone that never had custom tones");
+        Check(!fresh.Files.Keys.Any(k => k.EndsWith(".jethriki-part")), "No temporary files are left on the phone");
+
+        // A connection that drops while the ringtone list is being written leaves the old list untouched.
+        var before = phone.Files[IPhone.ListPath]; phone.DropWritesTo = "Ringtones.plist.jethriki-part";
+        Environment.SetEnvironmentVariable("USBMUXD_SOCKET_ADDRESS", phone.Address);
+        try { await IPhone.InstallRingtoneAsync(devices[0], tone, "Dropped"); Check(false, "A dropped connection is reported"); }
+        catch (IPhoneException error) { Check(error.Message.Contains("dropped"), "A dropped connection is reported plainly: " + error.Message); }
+        Check(phone.Files[IPhone.ListPath].SequenceEqual(before), "A dropped connection leaves the ringtone list intact");
+        phone.DropWritesTo = null; phone.RenameRefusesExisting = true; phone.Files[IPhone.ListPath + ".jethriki-part"] = [1, 2, 3];
+        await IPhone.InstallRingtoneAsync(devices[0], tone, "Renamed");
+        Check((await IPhone.ListRingtonesAsync(devices[0])).Contains("Renamed") && !phone.Files.Keys.Any(k => k.EndsWith(".jethriki-part")), "Replaces the list on phones that won't rename over a file, and cleans up a cut-off transfer");
+        phone.RenameRefusesExisting = false;
+
+        // A locked phone that never answers StartSession times out with an unlock hint instead of hanging.
+        phone.StallSession = true; var limit = IPhone.HandshakeTimeout; IPhone.HandshakeTimeout = TimeSpan.FromSeconds(1);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        try { await IPhone.InstallRingtoneAsync(devices[0], tone); Check(false, "An unanswering iPhone is reported"); }
+        catch (IPhoneException error) { Check(error.Message.Contains("Unlock") && clock.Elapsed < TimeSpan.FromSeconds(5), $"An unanswering iPhone times out with an unlock hint in {clock.Elapsed.TotalSeconds:0.0}s: " + error.Message); }
+        using (var userCancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300))) {
+            try { await IPhone.InstallRingtoneAsync(devices[0], tone, null, null, userCancel.Token); Check(false, "Cancel stops a stalled transfer"); }
+            catch (OperationCanceledException) { Check(true, "Cancelling a stalled transfer is a cancellation, not an error"); }
+        }
+        phone.StallSession = false; IPhone.HandshakeTimeout = limit;
+        Environment.SetEnvironmentVariable("USBMUXD_SOCKET_ADDRESS", fresh.Address);
         fresh.Trusted = false;
         try { await IPhone.InstallRingtoneAsync((await IPhone.ListAsync())[0], tone); Check(false, "Untrusted computer is refused"); }
         catch (IPhoneException error) { Check(error.Message.Contains("Trust"), "Untrusted computer gets a Trust hint: " + error.Message); }
@@ -441,6 +467,13 @@ static class FakeAdb {
                     return 0;
                 }
                 if (command.StartsWith("content update")) { Console.WriteLine("Result: rows_affected=1"); return 0; }
+                var quoted = Regex.Matches(command, "'([^']*)'").Select(m => m.Groups[1].Value).ToArray();
+                if (command.StartsWith("stat -c %s ") && quoted.Length == 1) {
+                    if (!File.Exists(Local(quoted[0]))) { Console.Error.WriteLine("stat: No such file"); return 1; }
+                    Console.WriteLine(new FileInfo(Local(quoted[0])).Length); return 0;
+                }
+                if (command.StartsWith("mv -f ") && quoted.Length == 2) { File.Move(Local(quoted[0]), Local(quoted[1]), true); return 0; }
+                if (command.StartsWith("rm -f ") && quoted.Length == 1) { File.Delete(Local(quoted[0])); return 0; }
                 if (command.StartsWith("settings put ")) { File.AppendAllText(Path.Combine(state, "settings.txt"), command + "\n"); return 0; }
             }
         }
