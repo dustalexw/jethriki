@@ -78,6 +78,7 @@ struct SettingsTab: View {
                     NavigationLink("Licenses") { LicensesView() }
                 }
             }
+            .readableWidth()
             .navigationTitle("Settings")
             .alert("yt-dlp", isPresented: Binding(get: { updateMessage != nil }, set: { if !$0 { updateMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -95,6 +96,8 @@ struct LicensesView: View {
     var body: some View {
         ScrollView {
             Text(text).font(.footnote).textSelection(.enabled).padding()
+                .frame(maxWidth: 760, alignment: .leading)
+                .frame(maxWidth: .infinity)
         }
         .navigationTitle("Licenses")
         .navigationBarTitleDisplayMode(.inline)

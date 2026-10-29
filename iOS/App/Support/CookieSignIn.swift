@@ -57,12 +57,13 @@ struct CookieSignInRow: View {
                 }
             }
         }
-        Hint("Lets yt-dlp see members-only, age-restricted or private videos you can already watch. Sign in once in Jethriki's browser; the cookies stay on this iPhone.")
+        Hint("Lets yt-dlp see members-only, age-restricted or private videos you can already watch. Sign in once in Jethriki's browser; the cookies stay on this \(Device.name).")
             .sheet(isPresented: $browsing) {
                 SignInBrowser { count in
                     signedIn = count > 0
                     if count > 0 { o.cookiesFile = CookieJar.file.path }
                 }
+                .pageSizedSheet()
             }
     }
 }

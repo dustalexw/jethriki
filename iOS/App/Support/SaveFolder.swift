@@ -70,7 +70,7 @@ struct SaveFolderRow: View {
         HStack {
             Image(systemName: isAppFolder ? "iphone" : "folder.fill").foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 2) {
-                Text(isAppFolder ? "On My iPhone › Jethriki" : URL(fileURLWithPath: o.outputDirectory).lastPathComponent)
+                Text(isAppFolder ? "\(Device.filesLocation) › Jethriki" : URL(fileURLWithPath: o.outputDirectory).lastPathComponent)
                 if !isAppFolder {
                     Text(o.outputDirectory).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
@@ -83,6 +83,6 @@ struct SaveFolderRow: View {
         if !isAppFolder {
             Button("Use Jethriki's folder") { SaveFolder.useAppFolder(store: store) }
         }
-        Hint("Jethriki's folder is in the Files app under On My iPhone › Jethriki. You can also save to iCloud Drive or another location.")
+        Hint("Jethriki's folder is in the Files app under \(Device.filesLocation) › Jethriki. You can also save to iCloud Drive or another location.")
     }
 }

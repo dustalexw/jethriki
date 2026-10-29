@@ -148,8 +148,11 @@ struct IconTile: View {
     let symbol: String
     let colors: [Color]
     var size: CGFloat = 22
+    /// Grows with the system text size on iPhone and iPad (always 1 on the Mac).
+    @ScaledMetric private var scale: CGFloat = 1
 
     var body: some View {
+        let size = self.size * min(scale, 2)
         RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
             .fill(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
             .frame(width: size, height: size)
@@ -208,10 +211,19 @@ struct GlowButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
+                #if os(iOS)
+                // Follows the system text size, so it grows with Larger Text like the rest of the app.
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .frame(minHeight: 34)
+                #else
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .frame(height: 34)
+                #endif
                 .background(Capsule().fill(Theme.play))
                 .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 1))
                 .shadow(color: Theme.ember.opacity(isEnabled ? (hovering ? 0.65 : 0.45) : 0), radius: hovering ? 12 : 8, y: 2)
@@ -220,6 +232,10 @@ struct GlowButtonStyle: ButtonStyle {
                 .saturation(isEnabled ? 1 : 0.3)
                 .onHover { hovering = $0 }
                 .animation(.easeOut(duration: 0.15), value: hovering)
+                #if os(iOS)
+                .contentShape(.hoverEffect, Capsule())
+                .hoverEffect(.lift)
+                #endif
         }
     }
 }
@@ -232,14 +248,20 @@ struct BrandMark: View {
     private var appIcon: Image { Image("BrandIcon") }
     #endif
 
+    @ScaledMetric(relativeTo: .headline) private var iconSize: CGFloat = 26
+
     var body: some View {
         HStack(spacing: 8) {
             appIcon
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 26, height: 26)
+                .frame(width: min(iconSize, 40), height: min(iconSize, 40))
             Text("Jethriki")
+                #if os(iOS)
+                .font(.system(.headline, design: .rounded).weight(.heavy))
+                #else
                 .font(.system(size: 17, weight: .heavy, design: .rounded))
+                #endif
                 .foregroundStyle(Theme.ribbon)
         }
         .fixedSize()

@@ -3,27 +3,31 @@ import SwiftUI
 /// Downloads in progress and finished, with their logs and files.
 struct QueueTab: View {
     @EnvironmentObject private var downloads: DownloadManager
+    @State private var selection: UUID?
+    @State private var knownCount = 0
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    private var selectedJob: DownloadJob? {
+        selection.flatMap { id in downloads.jobs.first { $0.id == id } }
+    }
 
     var body: some View {
-        NavigationStack {
+        // iPad: the queue on the left, the chosen download's progress, files and log on the right.
+        NavigationSplitView {
             Group {
                 if downloads.jobs.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "tray").font(.system(size: 44)).foregroundStyle(Theme.ribbonDiagonal)
-                        Text("Nothing in the queue").font(.headline)
-                        Text("Paste a link on the Download tab, or share one to Jethriki from Safari or YouTube.")
-                            .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    }
-                    .padding(32)
+                    EmptyDetail(symbol: "tray", title: "Nothing in the queue",
+                                message: "Paste a link on the Download tab, or share one to Jethriki from Safari or YouTube.")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List {
+                    List(selection: $selection) {
                         ForEach(downloads.jobs.reversed()) { job in
                             NavigationLink(value: job.id) { JobRowIOS(job: job) }
                                 .swipeActions(edge: .trailing) {
                                     if job.status.isActive || job.status == .queued {
                                         Button("Stop", role: .destructive) { downloads.cancel(job) }
                                     } else {
-                                        Button("Remove", role: .destructive) { downloads.remove(job) }
+                                        Button("Remove", role: .destructive) { remove(job) }
                                     }
                                 }
                                 .swipeActions(edge: .leading) {
@@ -31,24 +35,72 @@ struct QueueTab: View {
                                         Button("Retry") { downloads.retry(job) }.tint(Theme.blue)
                                     }
                                 }
+                                .contextMenu { menu(for: job) }
                         }
                     }
                 }
             }
             .navigationTitle("Queue")
-            .navigationDestination(for: UUID.self) { id in
-                if let job = downloads.jobs.first(where: { $0.id == id }) { JobDetailView(job: job) }
-            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        Button("Clear finished") { downloads.clearFinished() }
+                        Button("Clear finished") { clearFinished() }
                         Button("Stop all", role: .destructive) { downloads.cancelAll() }
                     } label: { Image(systemName: "ellipsis.circle") }
                     .disabled(downloads.jobs.isEmpty)
                 }
             }
+            .sidebarColumnWidth()
+        } detail: {
+            NavigationStack {
+                if let job = selectedJob {
+                    JobDetailView(job: job).id(job.id)
+                } else {
+                    EmptyDetail(symbol: "arrow.down.circle", title: downloads.jobs.isEmpty ? "No downloads" : "Pick a download",
+                                message: downloads.jobs.isEmpty ? "" : "Its progress, files and log appear here.")
+                }
+            }
         }
+        .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            knownCount = downloads.jobs.count
+            selectNewest(added: false)
+        }
+        .onChange(of: downloads.jobs.count) { count in
+            selectNewest(added: count > knownCount)
+            knownCount = count
+        }
+    }
+
+    /// On a wide screen, show the newest download when one is added (or when nothing is showing). On a
+    /// phone this would push the detail page by itself, so there it's left to a tap.
+    private func selectNewest(added: Bool) {
+        guard sizeClass == .regular, added || selectedJob == nil else { return }
+        selection = downloads.jobs.last?.id
+    }
+
+    @ViewBuilder
+    private func menu(for job: DownloadJob) -> some View {
+        if job.status.isActive || job.status == .queued {
+            Button(role: .destructive) { downloads.cancel(job) } label: { Label("Stop", systemImage: "stop.circle") }
+        }
+        if job.status.isDone {
+            Button { downloads.retry(job) } label: { Label("Retry", systemImage: "arrow.clockwise") }
+        }
+        Button { UIPasteboard.general.string = job.url } label: { Label("Copy Link", systemImage: "link") }
+        if !(job.status.isActive || job.status == .queued) {
+            Button(role: .destructive) { remove(job) } label: { Label("Remove", systemImage: "trash") }
+        }
+    }
+
+    private func remove(_ job: DownloadJob) {
+        if selection == job.id { selection = nil }
+        downloads.remove(job)
+    }
+
+    private func clearFinished() {
+        downloads.clearFinished()
+        if selectedJob == nil { selection = nil }
     }
 }
 

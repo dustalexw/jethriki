@@ -8,21 +8,28 @@ struct LibraryTab: View {
     @EnvironmentObject private var downloads: DownloadManager
     @State private var files: [URL] = []
     @State private var search = ""
+    @State private var selected: URL?
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var folder: URL { URL(fileURLWithPath: store.options.outputDirectory) }
     private var visible: [URL] {
         let q = search.trimmed.lowercased()
         return q.isEmpty ? files : files.filter { $0.lastPathComponent.lowercased().contains(q) }
     }
+    /// iPad (full screen or a wide window): picking a file previews it beside the list.
+    private var split: Bool { sizeClass == .regular }
+    private var selection: Binding<URL?> {
+        Binding(get: { split ? selected : nil }, set: { if split { selected = $0 } })
+    }
 
     var body: some View {
-        NavigationStack {
-            List {
+        NavigationSplitView {
+            List(selection: selection) {
                 if files.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "folder").font(.system(size: 40)).foregroundStyle(Theme.ribbonDiagonal)
                         Text("No downloads yet").font(.headline)
-                        Text("Finished files appear here, and in the Files app under On My iPhone › Jethriki.")
+                        Text("Finished files appear here, and in the Files app under \(Device.filesLocation) › Jethriki.")
                             .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
@@ -30,10 +37,16 @@ struct LibraryTab: View {
                     .listRowBackground(Color.clear)
                 }
                 ForEach(visible, id: \.self) { url in
-                    FileRow(url: url, notification: false, onDelete: { reload() })
+                    if split {
+                        NavigationLink(value: url) { FileRow(url: url, previewOnTap: false, onDelete: { deleted(url) }) }
+                    } else {
+                        FileRow(url: url, onDelete: { deleted(url) })
+                    }
                 }
                 .onDelete { offsets in
-                    for i in offsets { try? FileManager.default.removeItem(at: visible[i]) }
+                    let gone = offsets.map { visible[$0] }
+                    for url in gone { try? FileManager.default.removeItem(at: url) }
+                    if let selected, gone.contains(selected) { self.selected = nil }
                     reload()
                 }
             }
@@ -44,7 +57,23 @@ struct LibraryTab: View {
             .onReceive(downloads.objectWillChange) { _ in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { reload() }
             }
+            .sidebarColumnWidth()
+        } detail: {
+            NavigationStack {
+                if let selected, FileManager.default.fileExists(atPath: selected.path) {
+                    FilePreview(url: selected, onDelete: { deleted(selected) })
+                } else {
+                    EmptyDetail(symbol: "play.rectangle", title: files.isEmpty ? "No downloads yet" : "Pick a file",
+                                message: files.isEmpty ? "" : "It plays here, with sharing and ringtone options at the top.")
+                }
+            }
         }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    private func deleted(_ url: URL) {
+        if selected == url { selected = nil }
+        reload()
     }
 
     private func reload() {
@@ -64,84 +93,161 @@ struct LibraryTab: View {
     }
 }
 
-/// A downloaded file with the things you can do with it.
-struct FileRow: View {
+/// What can be done with a downloaded file: one list, used by the row's ⋯ menu, its long-press / right-click
+/// menu and the iPad preview's toolbar.
+struct FileActions {
     let url: URL
     var notification = false
-    var onDelete: () -> Void = {}
 
-    @State private var preview: URL?
-    @State private var sharing = false
-    @State private var wifiShare = false
-    @State private var ringtoneHelp = false
+    var ext: String { url.pathExtension.lowercased() }
+    var isTone: Bool { ["m4r", "ogg"].contains(ext) }
+    var isAudio: Bool { ["mp3", "m4a", "m4r", "aac", "opus", "ogg", "flac", "wav", "alac", "mka"].contains(ext) }
+    var isVideo: Bool { ["mp4", "mkv", "webm", "mov", "avi", "flv"].contains(ext) }
+    var canBeRingtone: Bool { ext == "m4r" || ext == "m4a" }
+    var canSendOverWiFi: Bool { isTone || ext == "m4a" }
+    var symbol: String { isTone ? "bell.badge" : isAudio ? "music.note" : isVideo ? "film" : "doc" }
+    var sendsNotification: Bool { notification || url.lastPathComponent.lowercased().contains("notification") }
 
-    private var ext: String { url.pathExtension.lowercased() }
-    private var isTone: Bool { ["m4r", "ogg"].contains(ext) }
-    private var isAudio: Bool { ["mp3", "m4a", "m4r", "aac", "opus", "ogg", "flac", "wav", "alac", "mka"].contains(ext) }
-    private var isVideo: Bool { ["mp4", "mkv", "webm", "mov", "avi", "flv"].contains(ext) }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isTone ? "bell.badge" : isAudio ? "music.note" : isVideo ? "film" : "doc")
-                .font(.title3)
-                .foregroundStyle(Theme.ribbonDiagonal)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(url.lastPathComponent).lineLimit(2)
-                Text(details).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            Menu {
-                Button { preview = url } label: { Label("Open", systemImage: "eye") }
-                Button { sharing = true } label: { Label("Share…", systemImage: "square.and.arrow.up") }
-                if ext == "m4r" || ext == "m4a" {
-                    Button { ringtoneHelp = true } label: { Label("Use as Ringtone…", systemImage: "bell") }
-                }
-                if isTone || ext == "m4a" {
-                    Button { wifiShare = true } label: { Label("Send to a phone over Wi-Fi", systemImage: "qrcode") }
-                }
-                Divider()
-                Button(role: .destructive) {
-                    try? FileManager.default.removeItem(at: url)
-                    onDelete()
-                } label: { Label("Delete", systemImage: "trash") }
-            } label: {
-                Image(systemName: "ellipsis.circle").font(.title3)
-            }
-            .buttonStyle(.borderless)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture { preview = url }
-        .quickLookPreview($preview)
-        .sheet(isPresented: $sharing) { ActivitySheet(items: [url]) }
-        .sheet(isPresented: $wifiShare) { WiFiShareSheet(url: url, notification: notification || isNotificationName) }
-        .sheet(isPresented: $ringtoneHelp) { RingtoneHelpSheet(url: url) }
-    }
-
-    private var isNotificationName: Bool { url.lastPathComponent.lowercased().contains("notification") }
-
-    private var details: String {
+    var details: String {
         let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         let size = ByteCountFormatter.string(fromByteCount: Int64(values?.fileSize ?? 0), countStyle: .file)
         let date = values?.contentModificationDate.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? ""
         return [ext.uppercased(), size, date].filter { !$0.isEmpty }.joined(separator: " · ")
     }
+
+    /// A file to drag into Files, Mail or another app on iPad.
+    func dragItem() -> NSItemProvider {
+        let item = NSItemProvider(contentsOf: url) ?? NSItemProvider()
+        item.suggestedName = url.lastPathComponent
+        return item
+    }
 }
 
-/// The system share sheet. On iOS 26, an audio file's share sheet offers Use as Ringtone.
-struct ActivitySheet: UIViewControllerRepresentable {
-    let items: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+/// A downloaded file with the things you can do with it.
+struct FileRow: View {
+    let url: URL
+    var notification = false
+    /// Off where tapping the row shows the file beside the list (iPad) instead of full screen.
+    var previewOnTap = true
+    var onDelete: () -> Void = {}
+
+    @State private var preview: URL?
+    @State private var wifiShare = false
+    @State private var ringtoneHelp = false
+
+    private var file: FileActions { FileActions(url: url, notification: notification) }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: file.symbol)
+                .font(.title3)
+                .foregroundStyle(Theme.ribbonDiagonal)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(url.lastPathComponent).lineLimit(2)
+                Text(file.details).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Menu { actions } label: {
+                Image(systemName: "ellipsis.circle").font(.title3)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Actions")
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { if previewOnTap { preview = url } }
+        .contextMenu { actions }
+        .onDrag { file.dragItem() }
+        .quickLookPreview($preview)
+        .sheet(isPresented: $wifiShare) { WiFiShareSheet(url: url, notification: file.sendsNotification) }
+        .sheet(isPresented: $ringtoneHelp) { RingtoneHelpSheet(url: url) }
     }
-    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+
+    @ViewBuilder
+    private var actions: some View {
+        if previewOnTap {
+            Button { preview = url } label: { Label("Open", systemImage: "eye") }
+        }
+        ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
+        if file.canBeRingtone {
+            Button { ringtoneHelp = true } label: { Label("Use as Ringtone…", systemImage: "bell") }
+        }
+        if file.canSendOverWiFi {
+            Button { wifiShare = true } label: { Label("Send to a phone over Wi-Fi", systemImage: "qrcode") }
+        }
+        Divider()
+        Button(role: .destructive) {
+            try? FileManager.default.removeItem(at: url)
+            onDelete()
+        } label: { Label("Delete", systemImage: "trash") }
+    }
+}
+
+/// iPad: a file playing beside the Library list, with its actions in the toolbar.
+struct FilePreview: View {
+    let url: URL
+    var onDelete: () -> Void = {}
+    @State private var wifiShare = false
+    @State private var ringtoneHelp = false
+
+    private var file: FileActions { FileActions(url: url) }
+
+    var body: some View {
+        InlineQuickLook(url: url)
+            .id(url)
+            .ignoresSafeArea(edges: .bottom)
+            .navigationTitle(url.deletingPathExtension().lastPathComponent)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if file.canBeRingtone {
+                        Button { ringtoneHelp = true } label: { Label("Use as Ringtone", systemImage: "bell") }
+                    }
+                    if file.canSendOverWiFi {
+                        Button { wifiShare = true } label: { Label("Send over Wi-Fi", systemImage: "qrcode") }
+                    }
+                    ShareLink(item: url)
+                    Button(role: .destructive) {
+                        try? FileManager.default.removeItem(at: url)
+                        onDelete()
+                    } label: { Label("Delete", systemImage: "trash") }
+                }
+            }
+            .sheet(isPresented: $wifiShare) { WiFiShareSheet(url: url, notification: file.sendsNotification) }
+            .sheet(isPresented: $ringtoneHelp) { RingtoneHelpSheet(url: url) }
+    }
+}
+
+/// Quick Look's player and viewer, embedded in a view rather than covering the screen.
+struct InlineQuickLook: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
+
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let controller = QLPreviewController()
+        controller.dataSource = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: QLPreviewController, context: Context) {
+        guard context.coordinator.url != url else { return }
+        context.coordinator.url = url
+        controller.reloadData()
+    }
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        var url: URL
+        init(url: URL) { self.url = url }
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
+    }
 }
 
 /// How to make a downloaded tone this iPhone's ringtone.
 struct RingtoneHelpSheet: View {
     let url: URL
     @Environment(\.dismiss) private var dismiss
-    @State private var sharing = false
 
     private var seconds: Double? {
         (try? Data(contentsOf: url, options: .mappedIfSafe)).flatMap(MP4.durationSeconds)
@@ -153,7 +259,7 @@ struct RingtoneHelpSheet: View {
                 Section {
                     Label("Tap Share below, then Use as Ringtone. It may be under More.", systemImage: "1.circle")
                     Label("Choose it in Settings › Sounds & Haptics › Ringtone (or Text Tone).", systemImage: "2.circle")
-                    Label("If Share doesn't offer it, open the Files app › On My iPhone › Jethriki, press and hold the tone, and choose Share › Use as Ringtone.", systemImage: "questionmark.circle")
+                    Label("If Share doesn't offer it, open the Files app › \(Device.filesLocation) › Jethriki, press and hold the tone, and choose Share › Use as Ringtone.", systemImage: "questionmark.circle")
                 } footer: {
                     Text("Use as Ringtone needs iOS 26 or later and a tone under 30 seconds. On older iPhones, send the .m4r from Jethriki on a Mac or PC with the cable.")
                 }
@@ -161,13 +267,12 @@ struct RingtoneHelpSheet: View {
                     Section { Warning("This tone is \(Int(seconds)) seconds long. iOS only offers Use as Ringtone for tones under 30 seconds; trim it shorter and download again.") }
                 }
                 Section {
-                    Button { sharing = true } label: { Label("Share \(url.lastPathComponent)", systemImage: "square.and.arrow.up") }
+                    ShareLink(item: url) { Label("Share \(url.lastPathComponent)", systemImage: "square.and.arrow.up") }
                 }
             }
             .navigationTitle("Use as Ringtone")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .sheet(isPresented: $sharing) { ActivitySheet(items: [url]) }
         }
     }
 }

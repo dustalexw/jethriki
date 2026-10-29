@@ -17,15 +17,20 @@ struct DownloadTab: View {
     @State private var showSavePreset = false
     @State private var newPresetName = ""
     @State private var showCommand = false
+    @State private var category: OptionCategory?
+    @State private var columns = NavigationSplitViewVisibility.all
     @FocusState private var linkFocused: Bool
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var urls: [String] {
         urlText.components(separatedBy: .whitespacesAndNewlines).map(\.trimmed).filter { !$0.isEmpty }
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
+        // On iPad the form and the chosen options page sit side by side; on iPhone (and in a narrow iPad
+        // window) the split collapses into the familiar stack, with each options page pushed on top.
+        NavigationSplitView(columnVisibility: $columns) {
+            List(selection: $category) {
                 Section {
                     linkField
                     Picker("Mode", selection: $store.options.mode) {
@@ -41,12 +46,14 @@ struct DownloadTab: View {
                         }
                         .buttonStyle(.bordered)
                         .disabled(urls.isEmpty || isFetching)
+                        .keyboardShortcut("i", modifiers: .command)
                         Spacer()
                         Button(action: startDownload) {
                             Label(urls.count > 1 ? "Download \(urls.count)" : "Download", systemImage: "arrow.down")
                         }
                         .buttonStyle(GlowButtonStyle())
                         .disabled(urls.isEmpty)
+                        .keyboardShortcut(.return, modifiers: .command)
                     }
                     .listRowSeparator(.hidden)
                 } footer: {
@@ -88,6 +95,7 @@ struct DownloadTab: View {
                     }
                 }
             }
+            .listStyle(.insetGrouped)
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Jethriki")
             .toolbar {
@@ -98,16 +106,30 @@ struct DownloadTab: View {
                     Button("Done") { linkFocused = false }
                 }
             }
-            .navigationDestination(for: OptionCategory.self) { category in
-                optionsPage(category)
-                    .navigationTitle(category.title)
-                    .navigationBarTitleDisplayMode(.inline)
+            .sidebarColumnWidth()
+        } detail: {
+            NavigationStack {
+                if let category {
+                    optionsPage(category)
+                        .readableWidth()
+                        .navigationTitle(category.title)
+                        .navigationBarTitleDisplayMode(.inline)
+                } else {
+                    EmptyDetail(symbol: "slider.horizontal.3", title: "Options",
+                                message: "Pick a group of options on the left. Changes apply to the next download.")
+                }
             }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            // A wide screen has room to show the first options page straight away.
+            if sizeClass == .regular && category == nil { category = .format }
         }
         .sheet(item: $inspecting) { info in
             FormatsSheet(info: info,
                          onUseFormat: { store.options.customFormat = $0 },
                          onDownload: { startDownload() })
+                .pageSizedSheet()
         }
         .sheet(item: $commentSearch.preview) { preview in
             CommentChapterSheet(preview: preview) { commentID in
@@ -116,6 +138,7 @@ struct DownloadTab: View {
                     commentSelectionSummary = "Selected \(candidate.chapters.count) chapters from \(candidate.author) for \(preview.title)."
                 }
             }
+            .pageSizedSheet()
         }
         .onChange(of: commentSearch.error) { message in
             if let message { errorMessage = message }

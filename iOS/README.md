@@ -19,7 +19,7 @@ Requires iOS 16 or later.
 ## What's included
 
 - Every desktop option page: format and quality, audio formats and filters, FFmpeg re-encode (x264, x265,
-  VP9, SVT-AV1 and the iPhone's hardware H.264/HEVC encoders), chapters and SponsorBlock, comment chapters,
+  VP9, SVT-AV1 and Apple's hardware H.264/HEVC encoders), chapters and SponsorBlock, comment chapters,
   subtitles, metadata and music tags, trim, playlists, network, output names and extra yt-dlp arguments.
 - All presets, including iPhone ringtone and text tone (.m4r) and Android ringtone and notification sound (.ogg).
 - Analyze: formats, chapters and playlist items before downloading.
@@ -27,11 +27,16 @@ Requires iOS 16 or later.
   (Settings › Keep downloading in the background) and a notification says when each one is done.
 - A Library of everything downloaded: play, share, delete, **Use as Ringtone** (iOS 26) and
   **Send to a phone over Wi-Fi** with a QR code.
-- Downloads go to Files › On My iPhone › Jethriki, or to a folder you choose (iCloud Drive, a USB drive…).
+- Downloads go to Files › On My iPhone (or iPad) › Jethriki, or to a folder you choose (iCloud Drive, a USB drive…).
 - **Share to Jethriki** from Safari, YouTube or any app's share sheet.
 - Sign in to sites in Jethriki's own browser to download members-only or age-restricted videos you can watch
   (iOS doesn't let apps use Safari's cookies).
 - Update yt-dlp from Settings without a new version of the app.
+- **iPad**: two-column layouts (the download form beside its options, the queue beside a download's log, the
+  Library beside a player), every orientation, Split View, Slide Over and Stage Manager, more than one
+  window, drag links in from Safari and drag files out to Files or Mail, right-click menus, the pointer, and
+  keyboard shortcuts: ⌘↩ download, ⌘I analyze, ⌘⇧V paste a link, ⌘1–3 and ⌘, to switch tabs.
+- Text follows the system text size (Settings › Display & Brightness › Text Size) on iPhone and iPad.
 
 Not available on iOS: sending tones over a USB cable to another phone, and Android's adb (both need a computer).
 

@@ -91,29 +91,38 @@ jobs:
           xcodebuild test -project iOS/Jethriki.xcodeproj -scheme Jethriki -destination "id=$DEVICE" \
             CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$VERSION" JETHRIKI_YTDLP_VERSION="$(cat iOS/build/ytdlp-version.txt)" \
             -resultBundlePath iOS/build/tests.xcresult 2>&1 | tee iOS/build/test.log | grep -E "error:|warning: .*Jethriki|Test Case|Executed|passed|failed|\*\*" | grep -v "^\s*$" | head -400
-      - name: Screenshots of each tab
+      - name: Screenshots of each tab, on iPhone and iPad
         # Pictures for reviewing the interface; a problem here shouldn't hold back the app.
         continue-on-error: true
         run: |
-          DEVICE=$(xcrun simctl list devices available -j | python3 -c "
-          import json, sys
-          devices = [d for runtime, ds in json.load(sys.stdin)['devices'].items() if 'iOS' in runtime for d in ds]
-          print(next(d['udid'] for d in reversed(devices) if d['name'].startswith('iPhone')))")
-          xcrun simctl bootstatus "$DEVICE" -b
           APP=$(find ~/Library/Developer/Xcode/DerivedData -path "*Debug-iphonesimulator/Jethriki.app" -maxdepth 6 | head -1)
           mkdir -p iOS/build/screens
-          xcrun simctl install "$DEVICE" "$APP"
-          xcrun simctl launch "$DEVICE" com.dustalexw.jethriki
-          sleep 8
-          xcrun simctl openurl "$DEVICE" "jethriki://add?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-          sleep 3; xcrun simctl io "$DEVICE" screenshot iOS/build/screens/1-download.png
-          for tab in queue library settings; do
-            xcrun simctl openurl "$DEVICE" "jethriki://tab/$tab"; sleep 3
-            xcrun simctl io "$DEVICE" screenshot "iOS/build/screens/$tab.png"
-          done
-          xcrun simctl ui "$DEVICE" appearance dark
-          xcrun simctl openurl "$DEVICE" "jethriki://tab/download"; sleep 3
-          xcrun simctl io "$DEVICE" screenshot iOS/build/screens/5-download-dark.png
+          shoot() {  # $1 = device name prefix, $2 = file prefix
+            DEVICE=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = [d for runtime, ds in json.load(sys.stdin)['devices'].items() if 'iOS' in runtime for d in ds]
+          print(next(d['udid'] for d in reversed(devices) if d['name'].startswith('$1')))")
+            echo "$1: $DEVICE"
+            xcrun simctl boot "$DEVICE" 2>/dev/null || true
+            xcrun simctl bootstatus "$DEVICE" -b
+            xcrun simctl ui "$DEVICE" appearance light
+            xcrun simctl install "$DEVICE" "$APP"
+            xcrun simctl launch "$DEVICE" com.dustalexw.jethriki
+            sleep 8
+            xcrun simctl openurl "$DEVICE" "jethriki://add?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            sleep 3; xcrun simctl io "$DEVICE" screenshot "iOS/build/screens/$2-1-download.png"
+            for tab in queue library settings; do
+              xcrun simctl openurl "$DEVICE" "jethriki://tab/$tab"; sleep 3
+              xcrun simctl io "$DEVICE" screenshot "iOS/build/screens/$2-$tab.png"
+            done
+            xcrun simctl ui "$DEVICE" appearance dark
+            xcrun simctl openurl "$DEVICE" "jethriki://tab/download"; sleep 3
+            xcrun simctl io "$DEVICE" screenshot "iOS/build/screens/$2-5-download-dark.png"
+            xcrun simctl shutdown "$DEVICE" || true
+          }
+          shoot iPhone iphone
+          shoot "iPad Pro 13" ipad-13
+          shoot "iPad mini" ipad-mini
       - uses: actions/upload-artifact@v7
         with:
           name: iOS-screenshots

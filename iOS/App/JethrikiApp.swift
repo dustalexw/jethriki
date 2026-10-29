@@ -28,32 +28,74 @@ enum AppTab: Hashable { case download, queue, library, settings }
 @main
 struct JethrikiApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    // One set of options, tools and one download queue, shared by every window on iPad.
     @StateObject private var store = OptionsStore()
     @StateObject private var tools = ToolLocator()
     @StateObject private var downloads = DownloadManager()
+
+    var body: some Scene {
+        WindowGroup {
+            WindowRoot()
+                .environmentObject(store)
+                .environmentObject(tools)
+                .environmentObject(downloads)
+                .onAppear {
+                    SaveFolder.restore(into: store)
+                    BackgroundKeeper.shared.watch(downloads)
+                }
+        }
+        .commands { AppCommands() }
+    }
+}
+
+/// One window. On iPad each window has its own tab and incoming links, so two windows side by side can show
+/// the queue in one and the download form in the other.
+struct WindowRoot: View {
     @StateObject private var router = AppRouter()
     @AppStorage("appearance") private var appearance = AppAppearance.system.rawValue
     @Environment(\.scenePhase) private var scenePhase
 
-    var body: some Scene {
-        WindowGroup {
-            RootView()
-                .environmentObject(store)
-                .environmentObject(tools)
-                .environmentObject(downloads)
-                .environmentObject(router)
-                .preferredColorScheme(AppAppearance(rawValue: appearance)?.colorScheme)
-                .tint(Theme.accent)
-                .onAppear {
-                    SaveFolder.restore(into: store)
-                    BackgroundKeeper.shared.watch(downloads)
-                    router.collectSharedLinks()
-                }
-                .onOpenURL { router.open($0) }
-                .onChange(of: scenePhase) { phase in
-                    if phase == .active { router.collectSharedLinks() }
-                }
+    var body: some View {
+        RootView()
+            .environmentObject(router)
+            .focusedSceneObject(router)
+            .preferredColorScheme(AppAppearance(rawValue: appearance)?.colorScheme)
+            .tint(Theme.accent)
+            .onAppear { router.collectSharedLinks() }
+            .onOpenURL { router.open($0) }
+            .onChange(of: scenePhase) { phase in
+                if phase == .active { router.collectSharedLinks() }
+            }
+            // Links dragged onto the window from Safari or another app go to the download form.
+            .onDrop(of: LinkDrop.types, isTargeted: nil) { providers in
+                LinkDrop.load(providers) { router.receive($0) }
+            }
+    }
+}
+
+/// Keyboard shortcuts (hold ⌘ on an iPad keyboard to see them) and, on iPadOS 26, the menu bar.
+struct AppCommands: Commands {
+    var body: some Commands {
+        CommandMenu("Go") { GoCommands() }
+    }
+}
+
+private struct GoCommands: View {
+    @FocusedObject private var router: AppRouter?
+
+    var body: some View {
+        Group {
+            Button("Download") { router?.tab = .download }.keyboardShortcut("1")
+            Button("Queue") { router?.tab = .queue }.keyboardShortcut("2")
+            Button("Library") { router?.tab = .library }.keyboardShortcut("3")
+            Button("Settings") { router?.tab = .settings }.keyboardShortcut(",")
+            Divider()
+            Button("Paste Link") {
+                if let text = UIPasteboard.general.string { router?.receive([text]) }
+            }
+            .keyboardShortcut("v", modifiers: [.command, .shift])
         }
+        .disabled(router == nil)
     }
 }
 
@@ -81,7 +123,7 @@ final class AppRouter: ObservableObject {
 
     func collectSharedLinks() { receive(SharedInbox.takeAll()) }
 
-    private func receive(_ links: [String]) {
+    func receive(_ links: [String]) {
         let clean = links.map(\.trimmed).filter { !$0.isEmpty }
         guard !clean.isEmpty else { return }
         incomingLinks += clean

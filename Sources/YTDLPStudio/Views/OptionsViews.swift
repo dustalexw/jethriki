@@ -200,7 +200,7 @@ struct EncodeOptionsView: View {
                             String(format: "%.1f Mbps", $0)
                         }
                         #if os(iOS)
-                        Hint("The iPhone's media engine: fast and light on the battery. Rough guide: 720p ≈ 2.5, 1080p ≈ 6, 4K ≈ 20 Mbps.")
+                        Hint("Apple's built-in media engine: fast and light on the battery. Rough guide: 720p ≈ 2.5, 1080p ≈ 6, 4K ≈ 20 Mbps.")
                         #else
                         Hint("Apple Silicon/Intel media engine. Rough guide: 720p ≈ 2.5, 1080p ≈ 6, 4K ≈ 20 Mbps.")
                         #endif
