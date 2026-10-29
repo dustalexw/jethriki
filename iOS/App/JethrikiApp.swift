@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Python takes a moment to start; do it now so the first download doesn't wait.
         PythonEngine.shared.start()
         UNUserNotificationCenter.current().delegate = NotificationPresenter.shared
+        // Segments as wide as their words, so "Video + Audio" isn't cut off in a narrow iPad column.
+        UISegmentedControl.appearance().apportionsSegmentWidthsByContent = true
         return true
     }
 }
@@ -61,7 +63,10 @@ struct WindowRoot: View {
             .focusedSceneObject(router)
             .preferredColorScheme(AppAppearance(rawValue: appearance)?.colorScheme)
             .tint(Theme.accent)
-            .onAppear { router.collectSharedLinks() }
+            .onAppear {
+                router.collectSharedLinks()
+                router.applyLaunchArguments()
+            }
             .onOpenURL { router.open($0) }
             .onChange(of: scenePhase) { phase in
                 if phase == .active { router.collectSharedLinks() }
@@ -122,6 +127,14 @@ final class AppRouter: ObservableObject {
     }
 
     func collectSharedLinks() { receive(SharedInbox.takeAll()) }
+
+    /// `-JethrikiLink <url> -JethrikiTab <tab>` at launch: how CI takes screenshots of each tab without the
+    /// "Open in Jethriki?" prompt a jethriki:// link raises.
+    func applyLaunchArguments() {
+        let arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        if let link = arguments["JethrikiLink"] as? String { receive([link]) }
+        if let tab = arguments["JethrikiTab"] as? String, let url = URL(string: "jethriki://tab/\(tab)") { open(url) }
+    }
 
     func receive(_ links: [String]) {
         let clean = links.map(\.trimmed).filter { !$0.isEmpty }

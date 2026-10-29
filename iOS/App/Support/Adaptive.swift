@@ -25,7 +25,7 @@ extension View {
 
     /// The column widths the app's two-column iPad layouts use.
     func sidebarColumnWidth() -> some View {
-        navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 460)
+        navigationSplitViewColumnWidth(min: 340, ideal: 390, max: 460)
     }
 }
 

@@ -50,6 +50,8 @@ struct DownloadTab: View {
                         Spacer()
                         Button(action: startDownload) {
                             Label(urls.count > 1 ? "Download \(urls.count)" : "Download", systemImage: "arrow.down")
+                                .lineLimit(1)
+                                .fixedSize()
                         }
                         .buttonStyle(GlowButtonStyle())
                         .disabled(urls.isEmpty)
@@ -97,7 +99,8 @@ struct DownloadTab: View {
             }
             .listStyle(.insetGrouped)
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Jethriki")
+            // Beside the options on iPad, the brand mark already names the app.
+            .navigationTitle(sizeClass == .regular ? "" : "Jethriki")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) { BrandMark() }
                 ToolbarItem(placement: .navigationBarTrailing) { presetsMenu }

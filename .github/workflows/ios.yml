@@ -107,17 +107,17 @@ jobs:
             xcrun simctl bootstatus "$DEVICE" -b
             xcrun simctl ui "$DEVICE" appearance light
             xcrun simctl install "$DEVICE" "$APP"
-            xcrun simctl launch "$DEVICE" com.dustalexw.jethriki
-            sleep 8
-            xcrun simctl openurl "$DEVICE" "jethriki://add?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-            sleep 3; xcrun simctl io "$DEVICE" screenshot "iOS/build/screens/$2-1-download.png"
-            for tab in queue library settings; do
-              xcrun simctl openurl "$DEVICE" "jethriki://tab/$tab"; sleep 3
-              xcrun simctl io "$DEVICE" screenshot "iOS/build/screens/$2-$tab.png"
-            done
+            # Launch arguments pick the tab: a jethriki:// link would stop at an "Open in Jethriki?" prompt.
+            open_tab() {  # $1 = tab, $2 = screenshot name
+              xcrun simctl launch --terminate-running-process "$DEVICE" com.dustalexw.jethriki \
+                -JethrikiLink "https://www.youtube.com/watch?v=dQw4w9WgXcQ" -JethrikiTab "$1"
+              sleep 6; xcrun simctl io "$DEVICE" screenshot "iOS/build/screens/$2.png"
+            }
+            sleep 2
+            open_tab download "$2-1-download"
+            for tab in queue library settings; do open_tab "$tab" "$2-$tab"; done
             xcrun simctl ui "$DEVICE" appearance dark
-            xcrun simctl openurl "$DEVICE" "jethriki://tab/download"; sleep 3
-            xcrun simctl io "$DEVICE" screenshot "iOS/build/screens/$2-5-download-dark.png"
+            open_tab download "$2-5-download-dark"
             xcrun simctl shutdown "$DEVICE" || true
           }
           shoot iPhone iphone
