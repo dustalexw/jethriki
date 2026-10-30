@@ -276,6 +276,7 @@ struct RingtoneHelpSheet: View {
             .navigationTitle("Use as Ringtone")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .horizontalToolbar()
         }
     }
 }
@@ -319,6 +320,7 @@ struct WiFiShareSheet: View {
             .navigationTitle("Send over Wi-Fi")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .horizontalToolbar()
         }
         .onAppear(perform: start)
         .onDisappear { share?.stop(); share = nil }

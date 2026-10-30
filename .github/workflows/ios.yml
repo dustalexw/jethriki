@@ -68,6 +68,12 @@ jobs:
       VERSION: ${{ inputs.version || '2.10.0' }}
     steps:
       - uses: actions/checkout@v7
+      - name: Use the newest Xcode on the runner
+        # Xcode 27.1 or later builds with iPhone Duo's fold APIs and full-screen layout; older ones still work.
+        run: |
+          NEWEST=$(ls -d /Applications/Xcode_2[7-9]*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$NEWEST" ]; then sudo xcode-select -s "$NEWEST"; fi
+          xcodebuild -version
       - uses: actions/download-artifact@v7
         with:
           name: JethrikiFFmpeg-xcframework
@@ -123,6 +129,8 @@ jobs:
           shoot iPhone iphone
           shoot "iPad Pro 13" ipad-13
           shoot "iPad mini" ipad-mini
+          # Only runners with Xcode 27.1 or later have the iPhone Duo simulator.
+          if xcrun simctl list devices available | grep -q "iPhone Duo"; then shoot "iPhone Duo" iphone-duo; fi
       - uses: actions/upload-artifact@v7
         with:
           name: iOS-screenshots

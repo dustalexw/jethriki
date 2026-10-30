@@ -36,9 +36,12 @@ Requires iOS 16 or later.
   Library beside a player), every orientation, Split View, Slide Over and Stage Manager, more than one
   window, drag links in from Safari and drag files out to Files or Mail, right-click menus, the pointer, and
   keyboard shortcuts: ⌘↩ download, ⌘I analyze, ⌘⇧V paste a link, ⌘1–3 and ⌘, to switch tabs.
-- **iPhone Duo**: the folded screen gets the iPhone layout. Opened, the inner screen gets the two-column
-  layouts, split evenly so the divider sits on the fold. It works in every orientation, with two windows
-  side by side. Toolbars use system bars with titled items, so iOS can move them to the side.
+- **iPhone Duo** (built with Xcode 27.1 or later): the folded screen gets the iPhone layout. Opened, the
+  inner screen gets the two-column layouts, with the columns meeting exactly at the fold. Half-folded like a
+  book, single-column screens such as Settings move to the left of the fold so no control sits on the crease.
+  Sheets whose only button is Done keep their bar along the top. It works in every orientation, with two
+  windows side by side. Built with older Xcode, the columns still split evenly, which puts the divider on
+  the fold too.
 - Text follows the system text size (Settings › Display & Brightness › Text Size) on iPhone and iPad.
 
 Not available on iOS: sending tones over a USB cable to another phone, and Android's adb (both need a computer).
