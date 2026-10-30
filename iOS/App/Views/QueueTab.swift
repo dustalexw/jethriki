@@ -49,7 +49,11 @@ struct QueueTab: View {
                     Menu {
                         Button("Clear finished") { clearFinished() }
                         Button("Stop all", role: .destructive) { downloads.cancelAll() }
-                    } label: { Image(systemName: "ellipsis.circle") }
+                    } label: {
+                        // A title as well as the icon: iPhone Duo moves bars to the side and folds items into an
+                        // overflow menu by their titles.
+                        Label("More", systemImage: "ellipsis.circle")
+                    }
                     .disabled(downloads.jobs.isEmpty)
                 }
             }

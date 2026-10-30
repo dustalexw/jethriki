@@ -54,11 +54,14 @@ struct JethrikiApp: App {
 /// the queue in one and the download form in the other.
 struct WindowRoot: View {
     @StateObject private var router = AppRouter()
+    @State private var width: CGFloat = 0
     @AppStorage("appearance") private var appearance = AppAppearance.system.rawValue
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         RootView()
+            .environment(\.windowWidth, width)
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width = $0 }
             .environmentObject(router)
             .focusedSceneObject(router)
             .preferredColorScheme(AppAppearance(rawValue: appearance)?.colorScheme)

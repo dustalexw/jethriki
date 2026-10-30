@@ -23,9 +23,9 @@ extension View {
         modifier(PageSizedSheet())
     }
 
-    /// The column widths the app's two-column iPad layouts use.
+    /// The sidebar width of the app's two-column layouts (see `SidebarWidth`).
     func sidebarColumnWidth() -> some View {
-        navigationSplitViewColumnWidth(min: 340, ideal: 390, max: 460)
+        modifier(SidebarWidth())
     }
 }
 
@@ -41,6 +41,26 @@ private struct ReadableWidth: ViewModifier {
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width = $0 }
         } else {
             content
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// The width of the window the view is in, measured once at the top of each window (see WindowRoot).
+    @Entry var windowWidth: CGFloat = 0
+}
+
+/// In a window under 1,000 points wide the two columns split it evenly. On iPhone Duo's inner screen that puts
+/// the divider on the fold, so nothing sits across the crease when it's half-folded. The same applies to iPad
+/// mini and to Split View and Stage Manager windows. Wider windows keep a sidebar of comfortable width.
+private struct SidebarWidth: ViewModifier {
+    @Environment(\.windowWidth) private var width
+
+    func body(content: Content) -> some View {
+        if width > 0 && width < 1000 {
+            content.navigationSplitViewColumnWidth((width / 2).rounded(.down))
+        } else {
+            content.navigationSplitViewColumnWidth(min: 340, ideal: 390, max: 460)
         }
     }
 }
