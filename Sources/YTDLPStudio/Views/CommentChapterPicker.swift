@@ -46,6 +46,7 @@ final class CommentChapterSearch: ObservableObject {
     deinit { runner?.terminate() }
 }
 
+#if os(macOS)
 struct CommentChapterPicker: View {
     let preview: CommentChapterPreview
     let onSelect: (String) -> Void
@@ -97,3 +98,4 @@ struct CommentChapterPicker: View {
         .onAppear { selectedID = preview.candidates.first?.id }
     }
 }
+#endif

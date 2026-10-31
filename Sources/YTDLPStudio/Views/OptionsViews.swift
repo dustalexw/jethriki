@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(AppKit)
 import AppKit
+#endif
 
 // MARK: - Shared helpers
 
@@ -122,18 +124,28 @@ struct AudioOptionsView: View {
                     EnumPicker(title: "Tone type", selection: $o.toneKind)
                     Hint("Notification sounds start instantly (leading silence removed), are at most \(Ringtone.notificationMaxSeconds) seconds and fade out quickly.")
                 }
+                #if !os(iOS)
                 if o.audioFormat.isAndroidRingtone {
                     Toggle("Send to Android when done", isOn: $o.autoSendToAndroid)
                     Hint("Copies each finished tone to the connected phone (USB first, then Wi-Fi debugging): notification sounds to Notifications, ringtones to Ringtones. It's added to the sound list; the default sound isn't changed. Needs adb: brew install android-platform-tools.")
                 }
+                #endif
                 if o.mode != .audio {
                     Hint("These apply in Audio Only mode. Switch modes at the top of the window.")
                 } else if o.audioFormat.isLossless {
                     Hint("Lossless formats don't use a bitrate. Note that converting a lossy source to FLAC doesn't add quality.")
                 } else if o.audioFormat.isRingtone {
+                    #if os(iOS)
+                    Hint("Saves an .m4r ringtone: AAC, up to \(Ringtone.maxSeconds) seconds, with a short fade in and out. When it's done, tap it in the Library and choose Use as Ringtone (iOS 26, under 30 seconds). Use Trim to choose which part of the song plays.")
+                    #else
                     Hint("Saves an .m4r ringtone ready for iTunes, Apple Devices or Finder: AAC, up to \(Ringtone.maxSeconds) seconds, with a short fade in and out. Use Trim to choose which part of the song plays.")
+                    #endif
                 } else if o.audioFormat.isAndroidRingtone {
+                    #if os(iOS)
+                    Hint("Saves an Ogg Vorbis ringtone, the format Android's own tones use: up to \(Ringtone.androidMaxSeconds) seconds, with a short fade in and out. Send it to an Android phone from the Library with a QR code over Wi-Fi.")
+                    #else
                     Hint("Saves an Ogg Vorbis ringtone, the format Android's own tones use: up to \(Ringtone.androidMaxSeconds) seconds, with a short fade in and out. Copy it to the phone's Ringtones folder, or open it on the phone and choose it in Settings › Sound.")
+                    #endif
                 }
             }
             Section("FFmpeg audio filters") {
@@ -187,7 +199,11 @@ struct EncodeOptionsView: View {
                         LabeledSlider(title: "Bitrate", value: $o.hwBitrateMbps, range: 0.5...50, step: 0.5) {
                             String(format: "%.1f Mbps", $0)
                         }
+                        #if os(iOS)
+                        Hint("Apple's built-in media engine: fast and light on the battery. Rough guide: 720p ≈ 2.5, 1080p ≈ 6, 4K ≈ 20 Mbps.")
+                        #else
                         Hint("Apple Silicon/Intel media engine. Rough guide: 720p ≈ 2.5, 1080p ≈ 6, 4K ≈ 20 Mbps.")
+                        #endif
                     }
                     if o.encoder.supportsPreset {
                         EnumPicker(title: "Speed preset", selection: $o.preset)
@@ -206,7 +222,11 @@ struct EncodeOptionsView: View {
                     }
                 }
                 Section("Files") {
+                    #if os(iOS)
+                    Toggle("Replace the original (deletes it)", isOn: $o.replaceOriginal)
+                    #else
                     Toggle("Replace the original (moves it to the Trash)", isOn: $o.replaceOriginal)
+                    #endif
                     Hint(o.replaceOriginal ? "The encoded file takes the original's name." : "The encoded copy is saved next to the original as “name.encoded.\(o.container.rawValue)”.")
                 }
             }
@@ -421,7 +441,11 @@ struct PlaylistOptionsView: View {
                 Picker("Download", selection: $o.playlistMode) {
                     ForEach(PlaylistMode.allCases) { Text($0.label).tag($0) }
                 }
+                #if os(macOS)
                 .pickerStyle(.radioGroup)
+                #else
+                .pickerStyle(.inline)
+                #endif
                 TextField("Items", text: $o.playlistItems, prompt: Text("All — or e.g. 1-5,8,10:20, -3::"))
                     .font(.system(.body, design: .monospaced))
                 Hint("Ranges are 1-based. “-3::” means the last three items; “::2” means every other item.")
@@ -459,8 +483,12 @@ struct NetworkOptionsView: View {
                 Hint("A short wait helps avoid rate-limiting on large playlists.")
             }
             Section("Login & privacy") {
+                #if os(iOS)
+                CookieSignInRow(o: $o)
+                #else
                 EnumPicker(title: "Use cookies from", selection: $o.cookieBrowser)
                 Hint("Lets yt-dlp see members-only, age-restricted or private videos you can already watch. Safari requires Full Disk Access for this app in System Settings › Privacy & Security.")
+                #endif
                 TextField("Proxy", text: $o.proxy, prompt: Text("e.g. socks5://127.0.0.1:1080"))
                     .font(.system(.body, design: .monospaced))
             }
@@ -477,6 +505,9 @@ struct OutputOptionsView: View {
     var body: some View {
         Form {
             Section("Save to") {
+                #if os(iOS)
+                SaveFolderRow(o: $o)
+                #else
                 HStack {
                     Image(systemName: "folder.fill").foregroundStyle(Color.accentColor)
                     Text((o.outputDirectory as NSString).abbreviatingWithTildeInPath)
@@ -489,6 +520,7 @@ struct OutputOptionsView: View {
                     } label: { Image(systemName: "arrow.up.forward.app") }
                     .help("Open in Finder")
                 }
+                #endif
             }
             Section("File names") {
                 EnumPicker(title: "Name files as", selection: $o.filenameTemplate)
@@ -513,6 +545,7 @@ struct OutputOptionsView: View {
         .formStyle(.grouped)
     }
 
+    #if canImport(AppKit)
     private func chooseFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -525,6 +558,7 @@ struct OutputOptionsView: View {
             o.outputDirectory = url.path
         }
     }
+    #endif
 }
 
 // MARK: - Advanced

@@ -1,13 +1,19 @@
 import SwiftUI
+#if canImport(AppKit)
 import AppKit
+typealias PlatformColor = NSColor
+#else
+import UIKit
+typealias PlatformColor = UIColor
+#endif
 
 /// Visual language taken from the app icon: deep-space navy, an iridescent
 /// pink → violet → cyan ribbon, and a glowing red-orange "play" accent.
 enum Theme {
-    static let spaceTop = Color.adaptive(light: NSColor(red: 0.97, green: 0.95, blue: 1.00, alpha: 1),
-                                         dark: NSColor(red: 0.07, green: 0.05, blue: 0.17, alpha: 1))
-    static let spaceBottom = Color.adaptive(light: NSColor(red: 0.93, green: 0.95, blue: 1.00, alpha: 1),
-                                            dark: NSColor(red: 0.03, green: 0.03, blue: 0.10, alpha: 1))
+    static let spaceTop = Color.adaptive(light: PlatformColor(red: 0.97, green: 0.95, blue: 1.00, alpha: 1),
+                                         dark: PlatformColor(red: 0.07, green: 0.05, blue: 0.17, alpha: 1))
+    static let spaceBottom = Color.adaptive(light: PlatformColor(red: 0.93, green: 0.95, blue: 1.00, alpha: 1),
+                                            dark: PlatformColor(red: 0.03, green: 0.03, blue: 0.10, alpha: 1))
 
     static let pink = Color(red: 1.00, green: 0.36, blue: 0.82)
     static let violet = Color(red: 0.55, green: 0.40, blue: 1.00)
@@ -25,13 +31,13 @@ enum Theme {
     static let play = LinearGradient(colors: [ember, flame],
                                      startPoint: .topLeading, endPoint: .bottomTrailing)
 
-    static let panelFill = Color.adaptive(light: NSColor.white.withAlphaComponent(0.62), dark: NSColor.white.withAlphaComponent(0.045))
-    static let fieldFill = Color.adaptive(light: NSColor.white.withAlphaComponent(0.85), dark: NSColor.white.withAlphaComponent(0.06))
-    static let chipFill = Color.adaptive(light: NSColor.black.withAlphaComponent(0.04), dark: NSColor.white.withAlphaComponent(0.06))
-    static let hoverFill = Color.adaptive(light: NSColor.black.withAlphaComponent(0.09), dark: NSColor.white.withAlphaComponent(0.14))
-    static let commandFill = Color.adaptive(light: NSColor.white.withAlphaComponent(0.6), dark: NSColor.black.withAlphaComponent(0.25))
-    static let track = Color.adaptive(light: NSColor.black.withAlphaComponent(0.08), dark: NSColor.white.withAlphaComponent(0.08))
-    static let hairline = Color.adaptive(light: NSColor.black.withAlphaComponent(0.08), dark: NSColor.white.withAlphaComponent(0.09))
+    static let panelFill = Color.adaptive(light: PlatformColor.white.withAlphaComponent(0.62), dark: PlatformColor.white.withAlphaComponent(0.045))
+    static let fieldFill = Color.adaptive(light: PlatformColor.white.withAlphaComponent(0.85), dark: PlatformColor.white.withAlphaComponent(0.06))
+    static let chipFill = Color.adaptive(light: PlatformColor.black.withAlphaComponent(0.04), dark: PlatformColor.white.withAlphaComponent(0.06))
+    static let hoverFill = Color.adaptive(light: PlatformColor.black.withAlphaComponent(0.09), dark: PlatformColor.white.withAlphaComponent(0.14))
+    static let commandFill = Color.adaptive(light: PlatformColor.white.withAlphaComponent(0.6), dark: PlatformColor.black.withAlphaComponent(0.25))
+    static let track = Color.adaptive(light: PlatformColor.black.withAlphaComponent(0.08), dark: PlatformColor.white.withAlphaComponent(0.08))
+    static let hairline = Color.adaptive(light: PlatformColor.black.withAlphaComponent(0.08), dark: PlatformColor.white.withAlphaComponent(0.09))
 
     /// Per-category tile colours, walking around the ribbon.
     static func tile(_ c: OptionCategory) -> [Color] {
@@ -53,10 +59,14 @@ enum Theme {
 
 extension Color {
     /// A colour that follows the window's light/dark appearance.
-    static func adaptive(light: NSColor, dark: NSColor) -> Color {
+    static func adaptive(light: PlatformColor, dark: PlatformColor) -> Color {
+        #if canImport(AppKit)
         Color(nsColor: NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
         })
+        #else
+        Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? dark : light })
+        #endif
     }
 }
 
@@ -78,6 +88,15 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         case .dark: return "moon.stars.fill"
         }
     }
+    /// For SwiftUI's preferredColorScheme.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+    #if canImport(AppKit)
     /// Applied to NSApp so every window, sheet and the Settings window follow it.
     func apply() {
         switch self {
@@ -86,6 +105,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
         }
     }
+    #endif
 }
 
 /// Cosmic backdrop: a deep-space gradient (or a pale dawn one in light mode) with soft nebula glows.
@@ -128,8 +148,11 @@ struct IconTile: View {
     let symbol: String
     let colors: [Color]
     var size: CGFloat = 22
+    /// Grows with the system text size on iPhone and iPad (always 1 on the Mac).
+    @ScaledMetric private var scale: CGFloat = 1
 
     var body: some View {
+        let size = self.size * min(scale, 2)
         RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
             .fill(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
             .frame(width: size, height: size)
@@ -188,10 +211,19 @@ struct GlowButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
+                #if os(iOS)
+                // Follows the system text size, so it grows with Larger Text like the rest of the app.
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .frame(minHeight: 34)
+                #else
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .frame(height: 34)
+                #endif
                 .background(Capsule().fill(Theme.play))
                 .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 1))
                 .shadow(color: Theme.ember.opacity(isEnabled ? (hovering ? 0.65 : 0.45) : 0), radius: hovering ? 12 : 8, y: 2)
@@ -200,20 +232,36 @@ struct GlowButtonStyle: ButtonStyle {
                 .saturation(isEnabled ? 1 : 0.3)
                 .onHover { hovering = $0 }
                 .animation(.easeOut(duration: 0.15), value: hovering)
+                #if os(iOS)
+                .contentShape(.hoverEffect, Capsule())
+                .hoverEffect(.lift)
+                #endif
         }
     }
 }
 
 /// Brand mark: the app icon (when bundled) and "Jethriki" in ribbon colours.
 struct BrandMark: View {
+    #if canImport(AppKit)
+    private var appIcon: Image { Image(nsImage: NSApp.applicationIconImage) }
+    #else
+    private var appIcon: Image { Image("BrandIcon") }
+    #endif
+
+    @ScaledMetric(relativeTo: .headline) private var iconSize: CGFloat = 26
+
     var body: some View {
         HStack(spacing: 8) {
-            Image(nsImage: NSApp.applicationIconImage)
+            appIcon
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 26, height: 26)
+                .frame(width: min(iconSize, 40), height: min(iconSize, 40))
             Text("Jethriki")
+                #if os(iOS)
+                .font(.system(.headline, design: .rounded).weight(.heavy))
+                #else
                 .font(.system(size: 17, weight: .heavy, design: .rounded))
+                #endif
                 .foregroundStyle(Theme.ribbon)
         }
         .fixedSize()

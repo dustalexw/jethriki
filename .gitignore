@@ -12,3 +12,7 @@ Linux/**/bin/
 Linux/**/obj/
 Linux/dist/
 Linux/.cache/
+
+# iOS build products (fetched or built by iOS/scripts)
+iOS/build/
+__pycache__/

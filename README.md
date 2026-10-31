@@ -37,6 +37,13 @@ The interface takes its look from the icon on all three platforms: a deep-space
 backdrop, frosted panels with an iridescent edge, a compact link field and a glowing
 Download button. Choose **System**, **Light** or **Dark** under Settings → Appearance.
 
+## iPhone and iPad edition
+
+Jethriki also runs on iOS 16 and later, with yt-dlp, FFmpeg and every option page built into the app:
+no computer needed. Apple doesn't allow YouTube downloaders on the App Store, so it's installed by sideloading
+the **Jethriki-X.Y.Z-iOS.ipa** from the releases page with AltStore, SideStore or Sideloadly. See
+[iOS instructions and how it works](iOS/README.md).
+
 ## Windows portable edition
 
 The Windows x64 edition includes the .NET desktop runtime, yt-dlp, FFmpeg, ffprobe

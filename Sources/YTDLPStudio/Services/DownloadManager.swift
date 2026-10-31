@@ -1,6 +1,10 @@
 import Foundation
 import Combine
+#if canImport(AppKit)
 import AppKit
+#elseif os(iOS)
+import AudioToolbox
+#endif
 
 enum JobStatus: Equatable {
     case queued, starting, downloading
@@ -257,6 +261,7 @@ final class DownloadManager: ObservableObject {
         jobs.forEach(cancel)
     }
 
+    #if canImport(AppKit)
     func reveal(_ job: DownloadJob) {
         let existing = job.outputFiles.filter { FileManager.default.fileExists(atPath: $0) }
         if existing.isEmpty {
@@ -265,6 +270,7 @@ final class DownloadManager: ObservableObject {
             NSWorkspace.shared.activateFileViewerSelecting(existing.map { URL(fileURLWithPath: $0) })
         }
     }
+    #endif
 
     // MARK: - yt-dlp stage
 
@@ -440,6 +446,7 @@ final class DownloadManager: ObservableObject {
         if job.options.makesRingtone {
             job.outputFiles = Ringtone.finalize(job.outputFiles, keepExisting: job.options.noOverwrites, log: job.appendLog)
         }
+        #if !os(iOS)   // iOS can't run adb
         if job.options.sendsToAndroidWhenDone, !job.wasCancelled {
             let tones = job.outputFiles.filter {
                 ["ogg", "mp3", "m4a"].contains(($0 as NSString).pathExtension.lowercased()) && FileManager.default.fileExists(atPath: $0)
@@ -459,9 +466,11 @@ final class DownloadManager: ObservableObject {
                 return
             }
         }
+        #endif
         finish(job)
     }
 
+    #if !os(iOS)
     /// Copies finished tones to the first ready Android phone, USB before Wi-Fi. Never changes the default
     /// sound. Returns a user-facing reason when nothing could be sent.
     private static func sendToAndroid(_ tones: [String], notification: Bool, log: @escaping (String) -> Void) async -> String? {
@@ -481,12 +490,19 @@ final class DownloadManager: ObservableObject {
             return error.localizedDescription
         }
     }
+    #endif
 
     private func finish(_ job: DownloadJob) {
         if case .warning = job.status {} else { job.status = .finished }
         job.progress = 1
         job.speed = ""; job.eta = ""
-        if UserDefaults.standard.bool(forKey: "playSound") { NSSound(named: "Glass")?.play() }
+        if UserDefaults.standard.bool(forKey: "playSound") {
+            #if os(iOS)
+            AudioServicesPlaySystemSound(1025)
+            #else
+            NSSound(named: "Glass")?.play()
+            #endif
+        }
         pump()
     }
 
@@ -527,10 +543,15 @@ final class DownloadManager: ObservableObject {
                     let target = base + "." + ext
                     let fm = FileManager.default
                     do {
+                        #if os(iOS)   // iOS has no Trash for app files
+                        try fm.removeItem(atPath: input)
+                        if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
+                        #else
                         try fm.trashItem(at: URL(fileURLWithPath: input), resultingItemURL: nil)
                         if fm.fileExists(atPath: target) {
                             try fm.trashItem(at: URL(fileURLWithPath: target), resultingItemURL: nil)
                         }
+                        #endif
                         try fm.moveItem(atPath: output, toPath: target)
                         final = target
                     } catch {

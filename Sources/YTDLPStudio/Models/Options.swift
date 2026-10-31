@@ -606,10 +606,12 @@ struct DownloadOptions: Codable, Equatable {
     var retries = 10
     var proxy = ""
     var cookieBrowser: CookieBrowser = .none
+    /// A Netscape cookies.txt file passed with --cookies (on iOS, written by the in-app sign-in browser).
+    var cookiesFile = ""
     var sleepInterval = 0
 
     // Output
-    var outputDirectory: String = (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
+    var outputDirectory: String = DownloadOptions.defaultOutputDirectory
     var filenameTemplate: FilenameTemplate = .titleOnly
     var customTemplate = "%(title)s [%(id)s].%(ext)s"
     var restrictFilenames = false
@@ -619,6 +621,17 @@ struct DownloadOptions: Codable, Equatable {
 
     // Advanced
     var extraArgs = ""
+
+    #if os(iOS)
+    /// The app's Documents folder, which the Files app shows under On My iPhone › Jethriki.
+    static var defaultOutputDirectory: String {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].path
+    }
+    #else
+    static var defaultOutputDirectory: String {
+        (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
+    }
+    #endif
 
     // Derived helpers
     var thumbnailEmbeddable: Bool {

@@ -95,6 +95,7 @@ enum CommentChapterService {
             args += ["--write-comments", "--extractor-args", "youtube:comment_sort=top;max_comments=200,200,0,0"]
         } else { args += ["--no-write-comments"] }
         if o.cookieBrowser != .none { args += ["--cookies-from-browser", o.cookieBrowser.rawValue] }
+        if !o.cookiesFile.trimmed.isEmpty, FileManager.default.fileExists(atPath: o.cookiesFile) { args += ["--cookies", o.cookiesFile] }
         if !o.proxy.trimmed.isEmpty { args += ["--proxy", o.proxy.trimmed] }
         if preview || o.playlistMode == .single { args += ["--no-playlist"] }
         else if o.playlistMode == .full { args += ["--yes-playlist"] }

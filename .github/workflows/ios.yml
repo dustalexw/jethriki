@@ -1,0 +1,207 @@
+name: iOS build
+on:
+  push:
+    branches: [main]
+    paths: ['iOS/**', 'Sources/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['iOS/**', 'Sources/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  ffmpeg:
+    name: FFmpeg for iOS
+    runs-on: macos-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - name: Reuse an earlier build of the same sources
+        id: cache
+        uses: actions/cache@v5
+        with:
+          path: iOS/build/ffmpeg/JethrikiFFmpeg.xcframework
+          key: ios-ffmpeg-${{ hashFiles('iOS/scripts/build-ffmpeg.sh', 'iOS/FFmpeg/**') }}
+      - name: Install build tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: brew install cmake meson ninja pkg-config autoconf automake libtool
+      - name: Reuse codec libraries from earlier runs
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            iOS/build/ffmpeg/work/*/prefix
+            iOS/build/ffmpeg/work/*/build/*.done
+          key: ios-codecs-${{ github.run_id }}
+          restore-keys: ios-codecs-
+      - name: Build FFmpeg and codecs for device and simulator
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          rm -f iOS/build/ffmpeg/work/*/build/ffmpeg.done
+          iOS/scripts/build-ffmpeg.sh iOS/build/ffmpeg
+      - name: Keep codec libraries for the next run
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            iOS/build/ffmpeg/work/*/prefix
+            iOS/build/ffmpeg/work/*/build/*.done
+          key: ios-codecs-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Pack framework
+        run: cd iOS/build/ffmpeg && ditto -c -k --keepParent JethrikiFFmpeg.xcframework JethrikiFFmpeg.xcframework.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: JethrikiFFmpeg-xcframework
+          path: iOS/build/ffmpeg/JethrikiFFmpeg.xcframework.zip
+          if-no-files-found: error
+
+  app:
+    name: iOS app
+    needs: ffmpeg
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ inputs.version || '2.10.0' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Use the newest Xcode on the runner
+        # Xcode 27.1 or later builds with iPhone Duo's fold APIs and full-screen layout; older ones still work.
+        run: |
+          NEWEST=$(ls -d /Applications/Xcode_2[7-9]*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$NEWEST" ]; then sudo xcode-select -s "$NEWEST"; fi
+          xcodebuild -version
+      - uses: actions/download-artifact@v7
+        with:
+          name: JethrikiFFmpeg-xcframework
+          path: iOS/build/ffmpeg
+      - name: Unpack FFmpeg
+        run: cd iOS/build/ffmpeg && ditto -x -k JethrikiFFmpeg.xcframework.zip . && ls
+      - name: Fetch Python and yt-dlp
+        run: iOS/scripts/prepare-python.sh
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd iOS && xcodegen
+      - name: Test on the simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = [d for runtime, ds in json.load(sys.stdin)['devices'].items() if 'iOS' in runtime for d in ds]
+          print(next(d['udid'] for d in reversed(devices) if d['name'].startswith('iPhone')))")
+          echo "Simulator $DEVICE"
+          set -o pipefail
+          xcodebuild test -project iOS/Jethriki.xcodeproj -scheme Jethriki -destination "id=$DEVICE" \
+            CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$VERSION" JETHRIKI_YTDLP_VERSION="$(cat iOS/build/ytdlp-version.txt)" \
+            -resultBundlePath iOS/build/tests.xcresult 2>&1 | tee iOS/build/test.log | grep -E "error:|warning: .*Jethriki|Test Case|Executed|passed|failed|\*\*" | grep -v "^\s*$" | head -400
+      - name: Screenshots of each tab, on iPhone and iPad
+        # Pictures for reviewing the interface; a problem here shouldn't hold back the app.
+        continue-on-error: true
+        run: |
+          APP=$(find ~/Library/Developer/Xcode/DerivedData -path "*Debug-iphonesimulator/Jethriki.app" -maxdepth 6 | head -1)
+          mkdir -p iOS/build/screens
+          shoot() {  # $1 = device name prefix, $2 = file prefix
+            DEVICE=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = [d for runtime, ds in json.load(sys.stdin)['devices'].items() if 'iOS' in runtime for d in ds]
+          print(next(d['udid'] for d in reversed(devices) if d['name'].startswith('$1')))")
+            echo "$1: $DEVICE"
+            xcrun simctl boot "$DEVICE" 2>/dev/null || true
+            xcrun simctl bootstatus "$DEVICE" -b
+            xcrun simctl ui "$DEVICE" appearance light
+            xcrun simctl install "$DEVICE" "$APP"
+            # Launch arguments pick the tab: a jethriki:// link would stop at an "Open in Jethriki?" prompt.
+            open_tab() {  # $1 = tab, $2 = screenshot name
+              xcrun simctl launch --terminate-running-process "$DEVICE" com.dustalexw.jethriki \
+                -JethrikiLink "https://www.youtube.com/watch?v=dQw4w9WgXcQ" -JethrikiTab "$1"
+              sleep 6; xcrun simctl io "$DEVICE" screenshot "iOS/build/screens/$2.png"
+            }
+            sleep 2
+            open_tab download "$2-1-download"
+            for tab in queue library settings; do open_tab "$tab" "$2-$tab"; done
+            xcrun simctl ui "$DEVICE" appearance dark
+            open_tab download "$2-5-download-dark"
+            xcrun simctl shutdown "$DEVICE" || true
+          }
+          shoot iPhone iphone
+          shoot "iPad Pro 13" ipad-13
+          shoot "iPad mini" ipad-mini
+          # Only runners with Xcode 27.1 or later have the iPhone Duo simulator.
+          if xcrun simctl list devices available | grep -q "iPhone Duo"; then shoot "iPhone Duo" iphone-duo; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: iOS-screenshots
+          path: iOS/build/screens
+      - name: Save test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: iOS-test-results
+          path: |
+            iOS/build/test.log
+            iOS/build/tests.xcresult
+      - name: Build for iPhone
+        run: |
+          set -o pipefail
+          xcodebuild build -project iOS/Jethriki.xcodeproj -scheme Jethriki -configuration Release -sdk iphoneos \
+            -derivedDataPath iOS/build/derived CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$VERSION" \
+            JETHRIKI_YTDLP_VERSION="$(cat iOS/build/ytdlp-version.txt)" 2>&1 | tee iOS/build/build.log | grep -E "error:|\*\*" | head -100
+      - name: Package unsigned IPA for sideloading
+        run: |
+          set -e
+          APP=iOS/build/derived/Build/Products/Release-iphoneos/Jethriki.app
+          # Ad-hoc signatures carry the entitlements (the app group the share extension uses); AltStore,
+          # SideStore, Sideloadly or Xcode sign it again with your Apple ID when you install it.
+          find "$APP/Frameworks" -name "*.framework" -maxdepth 1 -exec codesign --force --sign - {} \;
+          codesign --force --sign - --entitlements iOS/ShareExtension/JethrikiShare.entitlements "$APP/PlugIns/JethrikiShare.appex"
+          codesign --force --sign - --entitlements iOS/App/Jethriki.entitlements "$APP"
+          mkdir -p iOS/build/ipa/Payload && cp -R "$APP" iOS/build/ipa/Payload/
+          (cd iOS/build/ipa && zip -qry "../Jethriki-$VERSION-iOS.ipa" Payload)
+          ls -la iOS/build/Jethriki-$VERSION-iOS.ipa
+          shasum -a 256 iOS/build/Jethriki-$VERSION-iOS.ipa
+      - name: Package a ready-to-run Xcode project
+        # Everything ⌘R needs, already fetched and built: unzip, open iOS/Jethriki.xcodeproj, pick an iPhone or
+        # iPad and run.
+        run: |
+          set -e
+          OUT=iOS/build/package/Jethriki-$VERSION-Xcode
+          rm -rf iOS/build/package && mkdir -p "$OUT/iOS/build/ffmpeg" "$OUT/Sources/YTDLPStudio"
+          for d in App ShareExtension Tests Python Resources scripts project.yml README.md Jethriki.xcodeproj; do
+            ditto "iOS/$d" "$OUT/iOS/$d"
+          done
+          for d in Python.xcframework app_packages Versions.xcconfig ytdlp-version.txt python-version.txt; do
+            ditto "iOS/build/$d" "$OUT/iOS/build/$d"
+          done
+          ditto iOS/build/ffmpeg/JethrikiFFmpeg.xcframework "$OUT/iOS/build/ffmpeg/JethrikiFFmpeg.xcframework"
+          for d in Models Services Views; do ditto "Sources/YTDLPStudio/$d" "$OUT/Sources/YTDLPStudio/$d"; done
+          # The project file from CI carries no signing team; Xcode asks for one when you pick your own device.
+          rm -rf "$OUT/iOS/Jethriki.xcodeproj/xcuserdata" "$OUT/iOS/Jethriki.xcodeproj/project.xcworkspace/xcuserdata"
+          cat > "$OUT/READ ME FIRST.txt" <<TEXT
+          Jethriki $VERSION for iPhone and iPad — Xcode project
+
+          1. Open iOS/Jethriki.xcodeproj in Xcode.
+          2. At the top of the window, choose an iPhone or iPad: a simulator, or your own device plugged in.
+          3. Press Command-R.
+
+          On your own iPhone or iPad, first select the Jethriki project in the sidebar, then for both the
+          Jethriki and JethrikiShare targets: Signing & Capabilities > Team > your Apple ID. If the bundle
+          identifier is taken, change com.dustalexw to something of your own in both. With a free Apple ID,
+          remove the App Groups capability from both targets.
+
+          Everything else (FFmpeg, Python, yt-dlp) is already inside this folder.
+          TEXT
+          (cd iOS/build/package && ditto -c -k --keepParent "Jethriki-$VERSION-Xcode" "../Jethriki-$VERSION-Xcode.zip")
+          ls -la "iOS/build/Jethriki-$VERSION-Xcode.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Jethriki-${{ env.VERSION }}-Xcode
+          path: iOS/build/Jethriki-${{ env.VERSION }}-Xcode.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Jethriki-${{ env.VERSION }}-iOS
+          path: iOS/build/Jethriki-${{ env.VERSION }}-iOS.ipa
+          if-no-files-found: error
