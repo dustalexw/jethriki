@@ -48,7 +48,7 @@ struct QueueView: View {
                     }
                     Text("Nothing queued")
                         .font(.system(size: 15, weight: .semibold))
-                    Text("Paste a link above and press Download.\nAnalyze shows every available format first.")
+                    Text("Paste a link above and press Download.\nOr drop a local file on Import to extract its audio or remux it.")
                         .multilineTextAlignment(.center)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -138,7 +138,7 @@ struct JobRow: View {
             if let sendAndroidPath { SendToAndroidView(path: sendAndroidPath, notification: job.options.makesNotificationSound) }
         }
         .contextMenu {
-            Button("Copy link") {
+            Button(job.isImport ? "Copy source path" : "Copy link") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(job.url, forType: .string)
             }

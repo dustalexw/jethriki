@@ -9,6 +9,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using YtdlpStudio.Core;
 namespace YtdlpStudio.Linux;
@@ -33,6 +34,12 @@ public sealed class MainWindow : Window {
     Button[] modeButtons = [];
     ListBox jobs = null!;
     OptionsView options = null!;
+    // Import field: local files to remux (MKV ↔ MP4) or extract audio from. The choices survive a rebuild.
+    readonly List<string> importFiles = [];
+    int importAction, importFormat, importTarget;
+    TextBlock importLabel = null!;
+    ComboBox importFormatBox = null!, importActionBox = null!;
+    Button convert = null!, clearImport = null!;
     public DownloadOptions Current => store.Settings.Options;
 
     public MainWindow(AppSession session) {
@@ -96,7 +103,7 @@ public sealed class MainWindow : Window {
         download = new Button { Classes = { "glow" }, Content = Icons.WithText(Icons.Download, "Download", Brushes.Transparent, 16), Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         ToolTip.SetTip(download, "Add to queue (Ctrl+Enter)"); download.Click += (_, _) => StartDownload();
         top.Children.Add(Cell(download, 2));
-        root.Children.Add(Row(top, 0));
+        root.Children.Add(Row(new StackPanel { Spacing = 10, Children = { top, ImportField() } }, 0));
 
         // Row 2: download type, summary, actions.
         var bar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 12, 0, 14) };
@@ -195,7 +202,7 @@ public sealed class MainWindow : Window {
             BoxShadow = BoxShadows.Parse("0 0 30 6 #408C66FF"), Child = new Panel { Children = { Icons.Make(Icons.Download, 28, Look.Ribbon(45), 2) }, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
         return new Border { Background = Brushes.Transparent, Child = new StackPanel { Spacing = 10, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 40),
             Children = { ring, new TextBlock { Text = "Nothing queued", FontSize = 16, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0) },
-                new TextBlock { Text = "Paste a link above and press Download.\nAnalyze shows every available format first.", Classes = { "secondary" }, TextAlignment = TextAlignment.Center, FontSize = 12.5 } } } };
+                new TextBlock { Text = "Paste a link above and press Download.\nOr drop a local file on Import to extract its audio or remux it.", Classes = { "secondary" }, TextAlignment = TextAlignment.Center, FontSize = 12.5 } } } };
     }
 
     string[] Links => (urls.Text ?? "").Split('\n').Select(s => s.Trim()).Where(s => s.Length > 0).ToArray();
@@ -226,7 +233,7 @@ public sealed class MainWindow : Window {
     }
     void UpdateButtons() {
         bool ready = session.Ready, any = Links.Length > 0;
-        download.IsEnabled = ready && any; analyze.IsEnabled = ready && any && searchCancellation == null; findComments.IsEnabled = analyze.IsEnabled;
+        download.IsEnabled = ready && any; convert.IsEnabled = ready && importFiles.Count > 0; analyze.IsEnabled = ready && any && searchCancellation == null; findComments.IsEnabled = analyze.IsEnabled;
         cancelSearch.IsVisible = searchCancellation != null;
     }
     void UpdateJobActions() {
@@ -260,7 +267,7 @@ public sealed class MainWindow : Window {
         MenuItem Item(string header, Action action) { var m = new MenuItem { Header = header }; m.Click += (_, _) => action(); return m; }
         return new ContextMenu { ItemsSource = new Control[] {
             Item("View log", ShowLog), Item("Show files", RevealFiles), Item("Send to iPhone…", SendToIPhone), Item("Send to Android…", SendToAndroid),
-            Item("Copy link", () => { if (SelectedJob() is { } j) _ = Clipboard?.SetTextAsync(j.Url); }), new Separator(),
+            Item("Copy link or path", () => { if (SelectedJob() is { } j) _ = Clipboard?.SetTextAsync(j.Url); }), new Separator(),
             Item("Retry", () => { if (SelectedJob() is { } j) queue.Retry(j); }), Item("Cancel", () => { if (SelectedJob() is { } j) queue.Cancel(j); }) } };
     }
     MenuFlyout PresetsMenu() {
@@ -287,6 +294,74 @@ public sealed class MainWindow : Window {
         urls.Text = string.IsNullOrWhiteSpace(urls.Text) ? text.Trim() : urls.Text.Trim() + "\n" + text.Trim();
         urls.CaretIndex = urls.Text.Length;
     }
+    Control ImportField() {
+        var p = Look.P;
+        importLabel = new TextBlock { FontSize = 13.5, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Cursor = new Cursor(StandardCursorType.Hand) };
+        importLabel.PointerPressed += (_, _) => _ = ChooseImportFilesAsync();
+        clearImport = IconButton(Icons.Close, "Clear", () => { importFiles.Clear(); UpdateImport(); }, 24);
+        var choose = IconButton(Icons.Folder, "Choose files…", () => _ = ChooseImportFilesAsync(), 28);
+        var action = new ComboBox { ItemsSource = ImportRequest.Actions.Select(a => a.Label).ToArray(), SelectedIndex = importAction, MinWidth = 140, VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetName(action, "Import action"); importActionBox = action;
+        importFormatBox = new ComboBox { ItemsSource = ImportRequest.AudioFormats.Select(a => a.Label).ToArray(), SelectedIndex = importFormat, MinWidth = 170, VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetName(importFormatBox, "Audio format"); ToolTip.SetTip(importFormatBox, "Original copies the audio track without re-encoding");
+        var target = new ComboBox { ItemsSource = new[] { "Save next to original", "Save to download folder" }, SelectedIndex = importTarget, MinWidth = 170, VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetName(target, "Save imported files to");
+        action.SelectionChanged += (_, _) => { importAction = Math.Max(0, action.SelectedIndex); UpdateImport(); };
+        importFormatBox.SelectionChanged += (_, _) => importFormat = Math.Max(0, importFormatBox.SelectedIndex);
+        target.SelectionChanged += (_, _) => importTarget = Math.Max(0, target.SelectedIndex);
+        convert = Chip(Icons.Retry, "Convert", StartImport); ToolTip.SetTip(convert, "Add to queue");
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto,Auto,Auto,Auto"), ColumnSpacing = 6 };
+        row.Children.Add(Cell(Icons.Make(Icons.Download, 15, Look.Ribbon(45), 2), 0, new Thickness(0, 0, 4, 0)));
+        row.Children.Add(Cell(importLabel, 1)); row.Children.Add(Cell(clearImport, 2)); row.Children.Add(Cell(choose, 3));
+        row.Children.Add(Cell(action, 4)); row.Children.Add(Cell(importFormatBox, 5)); row.Children.Add(Cell(target, 6)); row.Children.Add(Cell(convert, 7));
+        var pill = new Border { Child = row, CornerRadius = new CornerRadius(18), Background = Look.B(p.Field), BorderBrush = Look.B(p.Hairline), BorderThickness = new Thickness(1),
+            Padding = new Thickness(14, 3, 5, 3), MinHeight = 38 };
+        // Files can be dropped on the field or anywhere on the window.
+        DragDrop.SetAllowDrop(this, true);
+        RemoveHandler(DragDrop.DropEvent, OnImportDrop); AddHandler(DragDrop.DropEvent, OnImportDrop);
+        RemoveHandler(DragDrop.DragOverEvent, OnImportDragOver); AddHandler(DragDrop.DragOverEvent, OnImportDragOver);
+        UpdateImport();
+        return pill;
+    }
+#pragma warning disable CS0618 // DragEventArgs.Data: the replacement API isn't in every Avalonia 11 release.
+    void OnImportDragOver(object? sender, DragEventArgs e) => e.DragEffects = e.Data.Contains(DataFormats.Files) ? DragDropEffects.Copy : DragDropEffects.None;
+    void OnImportDrop(object? sender, DragEventArgs e) {
+        if (e.Data.GetFiles() is { } items) AddImportFiles(items.Select(i => i.TryGetLocalPath()).OfType<string>());
+    }
+#pragma warning restore CS0618
+    async Task ChooseImportFilesAsync() {
+        var picked = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions {
+            Title = "Choose video or audio files to extract audio from or remux", AllowMultiple = true,
+            FileTypeFilter = [new("Video and audio files") { Patterns = MediaImport.Extensions.Select(e => "*." + e).ToArray() }, new("All files") { Patterns = ["*"] }] });
+        AddImportFiles(picked.Select(f => f.TryGetLocalPath()).OfType<string>());
+    }
+    void AddImportFiles(IEnumerable<string> paths) {
+        var all = paths.Where(File.Exists).ToArray(); var ok = all.Where(MediaImport.IsImportable).ToArray();
+        if (ok.Length == 0) { if (all.Length > 0) footer.Text = "That isn't a video or audio file Jethriki can import."; return; }
+        bool first = importFiles.Count == 0;
+        foreach (var file in ok) if (!importFiles.Contains(file)) importFiles.Add(file);
+        if (first) importActionBox.SelectedIndex = Array.FindIndex(ImportRequest.Actions, a => a.Value == ImportRequest.Suggested(ok[0]));
+        UpdateImport();
+    }
+    void UpdateImport() {
+        importLabel.Text = importFiles.Count switch { 0 => "Import a local file — drop a video or audio file here", 1 => Path.GetFileName(importFiles[0]), var n => n + " files" };
+        importLabel.Classes.Set("secondary", importFiles.Count == 0);
+        ToolTip.SetTip(importLabel, importFiles.Count == 0 ? "Click to choose files" : string.Join("\n", importFiles));
+        importFormatBox.IsVisible = ImportRequest.Actions[importAction].Value == ImportRequest.ExtractAudio;
+        clearImport.IsVisible = importFiles.Count > 0;
+        convert.Content = Icons.WithText(Icons.Retry, importFiles.Count > 1 ? $"Convert {importFiles.Count}" : "Convert", Brushes.Transparent, 15);
+        convert.IsEnabled = session.Ready && importFiles.Count > 0;
+    }
+    void StartImport() {
+        if (importFiles.Count == 0) return;
+        try {
+            queue.MaxConcurrent = Current.MaxConcurrent;
+            queue.EnqueueImports(importFiles, new(ImportRequest.Actions[importAction].Value, ImportRequest.AudioFormats[importFormat].Value), Current,
+                importTarget == 1 ? Current.OutputDirectory : null);
+            importFiles.Clear(); UpdateImport(); SyncJobs();
+        } catch (Exception error) { _ = Error(error); }
+    }
+
     void StartDownload() {
         try { queue.MaxConcurrent = Current.MaxConcurrent; queue.Enqueue(Links, Current, session.Selections); urls.Text = ""; SyncJobs(); }
         catch (Exception error) { _ = Error(error); }

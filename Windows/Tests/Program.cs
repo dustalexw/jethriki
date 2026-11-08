@@ -124,6 +124,36 @@ try {
         var streams = JsonNode.Parse(probe.Stdout)!["streams"]!.AsArray();
         Check(streams.OfType<JsonObject>().Any(s => CommentChapters.Text(s["codec_name"]) == "h264"), "Encoded H.264 verified with ffprobe");
     }
+    // Import field: local files, remuxed or with their audio extracted.
+    var importDir = Path.Combine(work, "import"); Directory.CreateDirectory(importDir);
+    File.WriteAllText(Path.Combine(importDir, "subs.srt"), "1\n00:00:01,000 --> 00:00:03,000\nHello there\n");
+    var mkv = Path.Combine(importDir, "Movie Night.mkv");
+    var made = await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "error", "-i", video, "-i", Path.Combine(importDir, "subs.srt"), "-map", "0:v", "-map", "0:a", "-map", "1:s", "-c:v", "copy", "-c:a", "libvorbis", "-c:s", "ass", mkv]);
+    Check(made.ExitCode == 0, "Creates MKV import fixture (Vorbis audio, ASS subtitles)");
+    async Task<DownloadJob> Import(string file, ImportRequest request, string? outputDirectory = null) {
+        var q = new DownloadQueue(real); q.EnqueueImports([file], request, new DownloadOptions(), outputDirectory);
+        var job = q.Jobs[0]; await job.Completion.WaitAsync(TimeSpan.FromSeconds(60));
+        if (job.State != JobState.Finished) Console.WriteLine(job.Stage + "\n" + string.Join('\n', job.Log));
+        return job; }
+    async Task<string> Codecs(string file, string select) => (await ProcessRunner.RunAsync(real.Ffprobe, ["-v", "error", "-select_streams", select, "-show_entries", "stream=codec_name", "-of", "csv=p=0", file])).Stdout.Trim();
+    var toMp4 = await Import(mkv, new(ImportRequest.RemuxMP4));
+    var mp4 = toMp4.OutputFiles.FirstOrDefault() ?? "";
+    Check(toMp4.State == JobState.Finished && mp4 == Path.Combine(importDir, "Movie Night.mp4"), "Import: MKV remuxed to MP4 next to the original");
+    Check(await Codecs(mp4, "v") == "h264" && await Codecs(mp4, "a") == "aac" && await Codecs(mp4, "s") == "mov_text", "Import: video copied, Vorbis → AAC, subtitles → mov_text");
+    var back = await Import(mp4, new(ImportRequest.RemuxMKV));
+    Check(back.OutputFiles.FirstOrDefault() == Path.Combine(importDir, "Movie Night (2).mkv") && await Codecs(back.OutputFiles[0], "s") == "subrip", "Import: MP4 → MKV never overwrites, mov_text → SRT");
+    var extracted = await Import(video, new(ImportRequest.ExtractAudio), importDir);
+    Check(extracted.OutputFiles.FirstOrDefault() == Path.Combine(importDir, "source-video.m4a") && await Codecs(extracted.OutputFiles[0], "a") == "aac" && await Codecs(extracted.OutputFiles[0], "v") == "", "Import: original AAC extracted to .m4a");
+    var flac = await Import(mkv, new(ImportRequest.ExtractAudio, "flac"));
+    Check(flac.State == JobState.Finished && await Codecs(flac.OutputFiles[0], "a") == "flac", "Import: audio converted to FLAC");
+    var silent = Path.Combine(importDir, "silent.mp4"); await ProcessRunner.RunAsync(real.Ffmpeg, ["-v", "error", "-i", video, "-an", "-c", "copy", silent]);
+    var noAudio = await Import(silent, new(ImportRequest.ExtractAudio));
+    Check(noAudio.State == JobState.Failed && noAudio.Stage.Contains("no audio track"), "Import: file without audio fails clearly");
+    var pgs = new ProbedMedia([new(0, "video", "hevc", false), new(1, "audio", "eac3", false), new(2, "subtitle", "hdmv_pgs_subtitle", false), new(3, "attachment", "ttf", false)], 60);
+    var plan = MediaImport.Plan("/m/a.mkv", pgs, new(ImportRequest.RemuxMP4), "/m", _ => false);
+    Check(plan.Arguments.Contains("hvc1") && !plan.Arguments.Contains("0:2") && !plan.Arguments.Contains("0:3") && plan.Notes.Count == 2, "Import: HEVC tagged hvc1; picture subtitles and fonts left out of MP4");
+    Throws(() => MediaImport.Plan("/m/a.webm", new([new(0, "video", "vp8", false)], 1), new(ImportRequest.RemuxMP4), "/m", _ => false), "Import: VP8 can't be remuxed to MP4");
+    Check(ImportRequest.Suggested("a.MKV") == ImportRequest.RemuxMP4 && ImportRequest.Suggested("a.mp4") == ImportRequest.RemuxMKV && ImportRequest.Suggested("a.flac") == ImportRequest.ExtractAudio, "Import: suggested action follows the file type");
     var trimOptions = new DownloadOptions { Mode = "audio", AudioFormat = "flac", EmbedThumbnail = false, NormalizeAudio = true, Channels = "mono", SampleRate = "r48000", TrimEnabled = true, TrimStart = "1", TrimEnd = "4", ForceKeyframes = true, OutputDirectory = Path.Combine(work, "trim"), ExtraArgs = "--enable-file-urls" };
     using var mediaServer = new LocalMediaServer(video);
     var trimQueue = new DownloadQueue(real); trimQueue.Enqueue([mediaServer.Url], trimOptions);
