@@ -149,6 +149,8 @@ struct ContentView: View {
                 .help("Add to queue (⌘↩)")
             }
 
+            ImportField()
+
             HStack(spacing: 12) {
                 Picker("Mode", selection: $store.options.mode) {
                     ForEach(DownloadMode.allCases) { Text($0.label).tag($0) }

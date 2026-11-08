@@ -44,6 +44,8 @@ final class DownloadJob: ObservableObject, Identifiable {
     let options: DownloadOptions
     let tools: ToolSnapshot
     var commentSelections: [String: String] = [:]
+    /// Set for a local file from the Import field; `url` is then the file's path.
+    let importRequest: ImportRequest?
 
     @Published var title = ""
     @Published var status: JobStatus = .queued
@@ -63,11 +65,15 @@ final class DownloadJob: ObservableObject, Identifiable {
     var encodeIndex = 0
     var encodeTotal = 0
 
-    init(url: String, options: DownloadOptions, tools: ToolSnapshot) {
+    init(url: String, options: DownloadOptions, tools: ToolSnapshot, importRequest: ImportRequest? = nil) {
         self.url = url
         self.options = options
         self.tools = tools
+        self.importRequest = importRequest
+        if importRequest != nil { title = (url as NSString).lastPathComponent }
     }
+
+    var isImport: Bool { importRequest != nil }
 
     var displayTitle: String { title.isEmpty ? url : title }
 
@@ -90,6 +96,7 @@ final class DownloadJob: ObservableObject, Identifiable {
         speed = ""; eta = ""; size = ""; itemInfo = ""
         outputFiles = []
         pendingEncodes = []
+        encodeDuration = nil
         log = []
     }
 
@@ -216,6 +223,17 @@ final class DownloadManager: ObservableObject {
         pump()
     }
 
+    /// Queues local files from the Import field. Each file is saved next to the original unless
+    /// `outputDirectory` is given.
+    func enqueueImports(files: [String], request: ImportRequest, options: DownloadOptions, tools: ToolSnapshot, outputDirectory: String? = nil) {
+        for file in files {
+            var o = options
+            o.outputDirectory = outputDirectory ?? (file as NSString).deletingLastPathComponent
+            jobs.append(DownloadJob(url: file, options: o, tools: tools, importRequest: request))
+        }
+        pump()
+    }
+
     func pump() {
         var slots = maxConcurrent - jobs.filter { $0.status.isActive }.count
         for job in jobs where job.status == .queued && slots > 0 {
@@ -271,6 +289,10 @@ final class DownloadManager: ObservableObject {
     private func start(_ job: DownloadJob) {
         job.resetForRun()
         job.status = .starting
+        if let request = job.importRequest {
+            runImport(job, request: request)
+            return
+        }
 
         let pathsFile = FileManager.default.temporaryDirectory
             .appendingPathComponent("ytdlp-studio-\(job.id.uuidString).paths").path
@@ -554,6 +576,85 @@ final class DownloadManager: ObservableObject {
         do {
             try runner.start()
         } catch {
+            job.status = .failed(error.localizedDescription)
+            pump()
+        }
+    }
+
+    // MARK: - Import stage (local files: extract audio, remux MKV ↔ MP4)
+
+    private func runImport(_ job: DownloadJob, request: ImportRequest) {
+        guard let ffmpeg = job.tools.ffmpeg else {
+            job.status = .failed("FFmpeg not found. Install it with `brew install ffmpeg`, or set its location in Settings.")
+            pump(); return
+        }
+        guard let ffprobe = MediaImport.ffprobePath(nextTo: ffmpeg) else {
+            job.status = .failed("FFprobe wasn't found next to FFmpeg. It ships with FFmpeg: `brew install ffmpeg`.")
+            pump(); return
+        }
+        guard FileManager.default.fileExists(atPath: job.url) else {
+            job.status = .failed("The file is no longer there.")
+            pump(); return
+        }
+        job.status = .processing("Reading file")
+        let input = job.url
+        let env = job.tools.environment
+        Task {
+            let probed = try? await Shell.run(ffprobe, MediaImport.probeArguments(input: input), environment: env)
+            DispatchQueue.main.async {
+                guard !job.wasCancelled else { job.status = .cancelled; self.pump(); return }
+                do {
+                    guard let probed, probed.status == 0 else {
+                        let detail = probed?.stderr.trimmed.components(separatedBy: .newlines).last ?? ""
+                        throw SimpleError("FFmpeg couldn't read this file. \(detail)")
+                    }
+                    let media = try MediaImport.parseProbe(probed.stdout)
+                    let plan = try MediaImport.plan(input: input, media: media, request: request,
+                                                    outputDirectory: job.options.outputDirectory)
+                    self.runImportFFmpeg(job, ffmpeg: ffmpeg, plan: plan, duration: media.duration, verb: request.action.verb)
+                } catch {
+                    job.appendLog("ERROR: \(error.localizedDescription)")
+                    job.status = .failed(error.localizedDescription)
+                    self.pump()
+                }
+            }
+        }
+    }
+
+    private func runImportFFmpeg(_ job: DownloadJob, ffmpeg: String, plan: MediaImport.Plan, duration: Double?, verb: String) {
+        try? FileManager.default.createDirectory(atPath: job.options.outputDirectory, withIntermediateDirectories: true)
+        job.encodeDuration = duration
+        job.progress = 0
+        job.status = .encoding(verb)
+        job.appendLog("$ ffmpeg " + plan.arguments.map(CommandBuilder.shellQuote).joined(separator: " "))
+        plan.notes.forEach { job.appendLog("[Import] \($0)") }
+
+        let runner = ProcessRunner(executable: ffmpeg, arguments: plan.arguments, environment: job.tools.environment)
+        runner.onLine = { [weak job] line, isErr in job?.handleFFmpegLine(line, isErr: isErr) }
+        runner.onExit = { [weak self, weak job] code in
+            guard let self, let job else { return }
+            job.runner = nil
+            if job.wasCancelled {
+                try? FileManager.default.removeItem(atPath: plan.output)
+                job.status = .cancelled
+                self.pump()
+                return
+            }
+            guard code == 0 else {
+                try? FileManager.default.removeItem(atPath: plan.output)
+                let lastLine = job.log.last { !$0.hasPrefix("$ ") && !$0.hasPrefix("[Import]") } ?? ""
+                job.status = .failed("FFmpeg exited with code \(code). \(lastLine)")
+                self.pump()
+                return
+            }
+            job.outputFiles = [plan.output]
+            job.itemInfo = (plan.output as NSString).lastPathComponent
+            self.finish(job)
+        }
+        job.runner = runner
+        do { try runner.start() }
+        catch {
+            job.runner = nil
             job.status = .failed(error.localizedDescription)
             pump()
         }

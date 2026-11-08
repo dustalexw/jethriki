@@ -17,6 +17,15 @@ public sealed class MainForm : Form {
     readonly Label commandNote = new() { AutoSize = true, UseMnemonic = false, Visible = false, Font = new Font("Segoe UI", 8.5f), Margin = new Padding(6, 8, 0, 0) };
     readonly Label queueCount = new() { AutoSize = true, Font = new Font("Segoe UI Semibold", 8f), Padding = new Padding(6, 1, 6, 1), Margin = new Padding(6, 3, 0, 0), Visible = false };
     readonly CardPanel pill = new() { Anchor = AnchorStyles.Left | AnchorStyles.Right, Radius = 22, Margin = new Padding(0, 0, 0, 0) };
+    // Import field: local files to remux (MKV ↔ MP4) or extract audio from.
+    readonly CardPanel importPill = new() { Anchor = AnchorStyles.Left | AnchorStyles.Right, Radius = 18, Height = 40, Margin = new Padding(0, 10, 0, 0), AllowDrop = true };
+    readonly Label importLabel = new() { Dock = DockStyle.Fill, AutoSize = false, UseMnemonic = false, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10f), Margin = new Padding(0) };
+    readonly ComboBox importAction = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 140, AccessibleName = "Import action", Anchor = AnchorStyles.None, Margin = new Padding(6, 0, 0, 0) };
+    readonly ComboBox importFormat = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 176, AccessibleName = "Audio format", Anchor = AnchorStyles.None, Margin = new Padding(6, 0, 0, 0) };
+    readonly ComboBox importTarget = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 176, AccessibleName = "Save imported files to", Anchor = AnchorStyles.None, Margin = new Padding(6, 0, 0, 0) };
+    readonly List<string> importFiles = [];
+    ChipButton convert = null!;
+    IconButton clearImport = null!;
     readonly Segmented mode;
     readonly ChipLabel summary = new();
     readonly IconButton analyze, clearLinks, cancelJob, retryJob, revealJob, logJob, sendJob, sendAndroid;
@@ -58,7 +67,9 @@ public sealed class MainForm : Form {
         top.Controls.Add(pill, 1, 0);
         download.Anchor = AnchorStyles.Right; download.Click += (_, _) => StartDownload(); tips.SetToolTip(download, "Add to queue (Ctrl+Enter)");
         top.Controls.Add(download, 2, 0);
-        root.Controls.Add(top, 0, 0);
+        var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, AutoSize = true, BackColor = Color.Transparent, Margin = new Padding(0) };
+        header.Controls.Add(top, 0, 0); header.Controls.Add(BuildImportField(), 0, 1);
+        root.Controls.Add(header, 0, 0);
 
         pill.Fill = p.Field; pill.Padding = new Padding(16, 6, 6, 6);
         var field = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 5, RowCount = 1, BackColor = p.Field, Margin = new Padding(0) };
@@ -250,7 +261,7 @@ public sealed class MainForm : Form {
     }
     void UpdateButtons() {
         bool ready = session.Ready, any = Links.Length > 0;
-        download.Enabled = ready && any; analyze.Enabled = ready && any && searchCancellation == null; findComments.Enabled = analyze.Enabled;
+        download.Enabled = ready && any; if (convert != null) convert.Enabled = ready && importFiles.Count > 0; analyze.Enabled = ready && any && searchCancellation == null; findComments.Enabled = analyze.Enabled;
         cancelSearch.Visible = searchCancellation != null;
     }
     void UpdateJobActions() {
@@ -346,7 +357,7 @@ public sealed class MainForm : Form {
         using var heading = new Font("Segoe UI Semibold", 12f); using var body = new Font("Segoe UI", 9.5f);
         var headingRect = new Rectangle(0, (int)(circle.Bottom + 16 * scale), area.Width, (int)(26 * scale));
         TextRenderer.DrawText(g, "Nothing queued", heading, headingRect, Theme.P.Text, TextFormatFlags.HorizontalCenter);
-        TextRenderer.DrawText(g, "Paste a link above and press Download.\nAnalyze shows every available format first.", body,
+        TextRenderer.DrawText(g, "Paste a link above and press Download.\nOr drop a local file on Import to extract its audio or remux it.", body,
             new Rectangle(0, headingRect.Bottom + (int)(6 * scale), area.Width, (int)(44 * scale)), Theme.P.Secondary, TextFormatFlags.HorizontalCenter | TextFormatFlags.WordBreak);
     }
     ContextMenuStrip JobMenu() {
@@ -355,11 +366,74 @@ public sealed class MainForm : Form {
         menu.Items.Add("Show files", null, (_, _) => RevealFiles());
         menu.Items.Add("Send to iPhone…", null, (_, _) => SendToIPhone());
         menu.Items.Add("Send to Android…", null, (_, _) => SendToAndroid());
-        menu.Items.Add("Copy link", null, (_, _) => { if (SelectedJob() is { } j) Clipboard.SetText(j.Url); });
+        menu.Items.Add("Copy link or path", null, (_, _) => { if (SelectedJob() is { } j) Clipboard.SetText(j.Url); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Retry", null, (_, _) => { if (SelectedJob() is { } j) queue.Retry(j); });
         menu.Items.Add("Cancel", null, (_, _) => { if (SelectedJob() is { } j) queue.Cancel(j); });
         return menu;
+    }
+
+    Control BuildImportField() {
+        var p = Theme.P;
+        importPill.Fill = p.Field; importPill.Padding = new Padding(14, 4, 5, 4);
+        var row = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 8, RowCount = 1, BackColor = p.Field, Margin = new Padding(0) };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < 6; i++) row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        row.Controls.Add(new Label { Text = Theme.Glyph.Download, Font = Theme.Icons(10), ForeColor = Theme.Violet, AutoSize = true, Anchor = AnchorStyles.None, Margin = new Padding(0, 0, 8, 0) }, 0, 0);
+        importLabel.BackColor = p.Field; importLabel.Click += (_, _) => ChooseImportFiles(); row.Controls.Add(importLabel, 1, 0);
+        clearImport = IconBtn(Theme.Glyph.Close, "Clear", () => { importFiles.Clear(); UpdateImport(); }, 24, p.Field); clearImport.Anchor = AnchorStyles.None;
+        var choose = IconBtn(Theme.Glyph.Folder, "Choose files…", ChooseImportFiles, 28, p.Field); choose.Anchor = AnchorStyles.None;
+        foreach (var (_, label) in ImportRequest.Actions) importAction.Items.Add(label);
+        foreach (var (_, label) in ImportRequest.AudioFormats) importFormat.Items.Add(label);
+        importTarget.Items.AddRange(["Save next to original", "Save to download folder"]);
+        importAction.SelectedIndex = 0; importFormat.SelectedIndex = 0; importTarget.SelectedIndex = 0;
+        foreach (var combo in new[] { importAction, importFormat, importTarget }) { combo.BackColor = p.Field; combo.ForeColor = p.Text; }
+        importAction.SelectedIndexChanged += (_, _) => UpdateImport();
+        convert = Chip(Theme.Glyph.Sync, "Convert", StartImport); convert.Accent = true; convert.Anchor = AnchorStyles.None; convert.Margin = new Padding(8, 0, 0, 0);
+        tips.SetToolTip(convert, "Add to queue"); tips.SetToolTip(importFormat, "Original copies the audio track without re-encoding");
+        row.Controls.Add(clearImport, 2, 0); row.Controls.Add(choose, 3, 0); row.Controls.Add(importAction, 4, 0);
+        row.Controls.Add(importFormat, 5, 0); row.Controls.Add(importTarget, 6, 0); row.Controls.Add(convert, 7, 0);
+        importPill.Controls.Add(row);
+        // Files can be dropped on the field or anywhere on the window.
+        foreach (Control target in new Control[] { this, importPill, row, importLabel }) {
+            target.AllowDrop = true;
+            target.DragEnter += (_, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
+            target.DragDrop += (_, e) => { if (e.Data?.GetData(DataFormats.FileDrop) is string[] dropped) AddImportFiles(dropped); };
+        }
+        UpdateImport();
+        return importPill;
+    }
+    void ChooseImportFiles() {
+        using var dialog = new OpenFileDialog { Multiselect = true, Title = "Choose video or audio files to extract audio from or remux",
+            Filter = "Video and audio files|" + string.Join(';', MediaImport.Extensions.Select(e => "*." + e)) + "|All files|*.*" };
+        if (dialog.ShowDialog(this) == DialogResult.OK) AddImportFiles(dialog.FileNames);
+    }
+    void AddImportFiles(IEnumerable<string> paths) {
+        var all = paths.Where(File.Exists).ToArray(); var ok = all.Where(MediaImport.IsImportable).ToArray();
+        if (ok.Length == 0) { if (all.Length > 0) footer.Text = "That isn't a video or audio file Jethriki can import."; return; }
+        bool first = importFiles.Count == 0;
+        foreach (var file in ok) if (!importFiles.Contains(file, StringComparer.OrdinalIgnoreCase)) importFiles.Add(file);
+        if (first) importAction.SelectedIndex = Array.FindIndex(ImportRequest.Actions, a => a.Value == ImportRequest.Suggested(ok[0]));
+        UpdateImport();
+    }
+    void UpdateImport() {
+        importLabel.Text = importFiles.Count switch { 0 => "Import a local file — drop a video or audio file here", 1 => Path.GetFileName(importFiles[0]), var n => n + " files" };
+        importLabel.ForeColor = importFiles.Count == 0 ? Theme.P.Secondary : Theme.P.Text;
+        tips.SetToolTip(importLabel, importFiles.Count == 0 ? "Click to choose files" : string.Join(Environment.NewLine, importFiles));
+        importFormat.Visible = ImportRequest.Actions[Math.Max(0, importAction.SelectedIndex)].Value == ImportRequest.ExtractAudio;
+        clearImport.Visible = importFiles.Count > 0;
+        convert.Text = importFiles.Count > 1 ? $"Convert {importFiles.Count}" : "Convert"; convert.Width = convert.GetPreferredSize(Size.Empty).Width;
+        convert.Enabled = session.Ready && importFiles.Count > 0;
+    }
+    void StartImport() {
+        if (importFiles.Count == 0) return;
+        try {
+            var request = new ImportRequest(ImportRequest.Actions[importAction.SelectedIndex].Value, ImportRequest.AudioFormats[importFormat.SelectedIndex].Value);
+            queue.MaxConcurrent = Current.MaxConcurrent;
+            queue.EnqueueImports(importFiles, request, Current, importTarget.SelectedIndex == 1 ? Current.OutputDirectory : null);
+            importFiles.Clear(); UpdateImport(); SyncJobs();
+        } catch (Exception error) { Error(error); }
     }
 
     void StartDownload() {
