@@ -27,6 +27,8 @@ targets:
         excludes: ["**/*.entitlements", "Info.plist"]
       - path: ../Sources/YTDLPStudio/Models
         group: Shared
+      - path: ../Sources/YTDLPStudio/Services/BrowserCookies.swift
+        group: Shared
       - path: ../Sources/YTDLPStudio/Services/ChapterTagger.swift
         group: Shared
       - path: ../Sources/YTDLPStudio/Services/CommandBuilder.swift

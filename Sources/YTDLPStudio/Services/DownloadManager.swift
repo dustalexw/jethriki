@@ -346,6 +346,9 @@ final class DownloadManager: ObservableObject {
         let args = CommandBuilder.arguments(for: job.options, urls: [job.url],
                                             ffmpegLocation: ffDir, pathsFile: pathsFile,
                                             chaptersFile: chaptersFile, tempDirectory: tempDir, infoFile: infoFile)
+        #if os(macOS)
+        if let note = BrowserCookies.resolve(job.options.cookieBrowser).note { job.appendLog("[Cookies] \(note)") }
+        #endif
         job.appendLog("$ yt-dlp " + args.map(CommandBuilder.shellQuote).joined(separator: " "))
 
         let runner = ProcessRunner(executable: job.tools.ytdlp, arguments: args, environment: job.tools.environment)

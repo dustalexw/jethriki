@@ -469,6 +469,34 @@ struct PlaylistOptionsView: View {
 
 struct NetworkOptionsView: View {
     @Binding var o: DownloadOptions
+    @State private var cookieSources: [BrowserCookies.Source] = []
+    @State private var safariLocked = false
+
+    /// Browsers that have cookies here, plus the saved choice even when it has none.
+    private var cookieChoices: [(browser: CookieBrowser, title: String)] {
+        var choices = cookieSources.map { source in
+            (browser: source.browser,
+             title: source.name == source.browser.label ? source.name : "\(source.browser.label) (\(source.name))")
+        }
+        let chosen = o.cookieBrowser
+        if chosen != .none, chosen != .auto, !choices.contains(where: { $0.browser == chosen }) {
+            choices.append((browser: chosen, title: "\(chosen.label) (not found)"))
+        }
+        return choices
+    }
+
+    private var cookieStatus: (text: String, warning: Bool)? {
+        guard o.cookieBrowser != .none else { return nil }
+        let resolution = BrowserCookies.resolve(o.cookieBrowser)
+        if let note = resolution.note { return (note, true) }
+        if o.cookieBrowser == .auto, let source = resolution.source { return ("Using \(source.name).", false) }
+        return nil
+    }
+
+    private func refreshCookieSources() {
+        cookieSources = BrowserCookies.available()
+        safariLocked = BrowserCookies.safariNeedsFullDiskAccess()
+    }
 
     var body: some View {
         Form {
@@ -484,16 +512,31 @@ struct NetworkOptionsView: View {
             }
             Section("Login & privacy") {
                 #if os(iOS)
+                // No desktop browsers on iPhone or iPad: sign in inside the app instead.
                 CookieSignInRow(o: $o)
                 #else
-                EnumPicker(title: "Use cookies from", selection: $o.cookieBrowser)
-                Hint("Lets yt-dlp see members-only, age-restricted or private videos you can already watch. Safari requires Full Disk Access for this app in System Settings › Privacy & Security.")
+                Picker("Use cookies from", selection: $o.cookieBrowser) {
+                    Text(CookieBrowser.none.label).tag(CookieBrowser.none)
+                    Text(CookieBrowser.auto.label).tag(CookieBrowser.auto)
+                    ForEach(cookieChoices, id: \.browser) { choice in
+                        Text(choice.title).tag(choice.browser)
+                    }
+                }
+                Hint("Lets yt-dlp see members-only, age-restricted or private videos you can already watch. Only browsers with cookies on this Mac are listed.")
+                if let status = cookieStatus {
+                    Hint(status.text, systemImage: status.warning ? "exclamationmark.triangle" : "checkmark.circle",
+                         tint: status.warning ? .orange : .green)
+                }
+                if safariLocked {
+                    Hint("Safari isn't listed because its cookies need Full Disk Access: System Settings › Privacy & Security › Full Disk Access, switch on Jethriki, then reopen the app.")
+                }
                 #endif
                 TextField("Proxy", text: $o.proxy, prompt: Text("e.g. socks5://127.0.0.1:1080"))
                     .font(.system(.body, design: .monospaced))
             }
         }
         .formStyle(.grouped)
+        .onAppear(perform: refreshCookieSources)
     }
 }
 
