@@ -45,7 +45,7 @@ struct MediaInfo: Identifiable {
 enum MetadataFetcher {
     static func fetch(url: String, tools: ToolSnapshot, cookieBrowser: CookieBrowser) async throws -> MediaInfo {
         var args = ["-J", "--flat-playlist", "--no-warnings"]
-        if cookieBrowser != .none { args += ["--cookies-from-browser", cookieBrowser.rawValue] }
+        args += BrowserCookies.arguments(for: cookieBrowser)
         args += ["--", url]
 
         let result = try await Shell.run(tools.ytdlp, args, environment: tools.environment)
