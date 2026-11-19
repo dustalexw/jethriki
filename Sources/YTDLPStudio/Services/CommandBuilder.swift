@@ -141,7 +141,7 @@ enum CommandBuilder {
         if o.concurrentFragments > 1 { a += ["-N", "\(o.concurrentFragments)"] }
         if o.retries != 10 { a += ["-R", "\(o.retries)"] }
         if !o.proxy.trimmed.isEmpty { a += ["--proxy", o.proxy.trimmed] }
-        if o.cookieBrowser != .none { a += ["--cookies-from-browser", o.cookieBrowser.rawValue] }
+        a += BrowserCookies.arguments(for: o.cookieBrowser)
         if o.sleepInterval > 0 { a += ["--sleep-interval", "\(o.sleepInterval)"] }
 
         // Output

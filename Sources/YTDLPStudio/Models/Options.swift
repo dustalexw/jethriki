@@ -474,8 +474,14 @@ enum PlaylistMode: String, OptionEnum {
 }
 
 enum CookieBrowser: String, OptionEnum {
-    case none, safari, chrome, firefox, brave, edge, chromium, opera, vivaldi
-    var label: String { self == .none ? "Don't use cookies" : rawValue.capitalized }
+    case none, auto, safari, chrome, firefox, brave, edge, chromium, opera, vivaldi
+    var label: String {
+        switch self {
+        case .none: return "Don't use cookies"
+        case .auto: return "Automatic"
+        default: return rawValue.capitalized
+        }
+    }
 }
 
 enum FilenameTemplate: String, OptionEnum {
