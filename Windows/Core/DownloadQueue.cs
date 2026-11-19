@@ -19,6 +19,14 @@ public sealed class DownloadJob(string url, DownloadOptions options, IReadOnlyDi
     public bool Active => State is JobState.Starting or JobState.Downloading or JobState.Processing;
     public bool Done => State is JobState.Finished or JobState.Warning or JobState.Failed or JobState.Cancelled;
     public void AddLog(string line) { Log.Enqueue(line); while (Log.Count > 4000) Log.TryDequeue(out _); }
+    // YouTube's "Sign in to confirm you're not a bot": after BotCheckLimit in a row the run is stopped.
+    public const int BotCheckLimit = 3;
+    public const string BotCheckMessage = "YouTube is asking to confirm you're not a bot. Wait about an hour, check that cookies come from the browser you're signed in to YouTube with, add waits in Network & login, then Retry.";
+    public static bool IsBotCheck(string line) => line.Replace('\u2019', '\'').Contains("confirm you're not a bot", StringComparison.OrdinalIgnoreCase);
+    public volatile bool StoppedForBotCheck;
+    int botCheckStreak;
+    internal CancellationTokenSource? BotStop;
+    internal void ResetBotCheck() => botCheckStreak = 0;
     public void HandleLine(string line, bool error) {
         if (line.StartsWith(CommandBuilder.ProgressPrefix)) {
             var parts = line[CommandBuilder.ProgressPrefix.Length..].Split('|').Select(s => s.Trim()).ToArray();
@@ -26,11 +34,18 @@ public sealed class DownloadJob(string url, DownloadOptions options, IReadOnlyDi
                 if (double.TryParse(parts[0].TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out var percent)) Progress = Math.Clamp(percent / 100, 0, 1);
                 string Clean(string s) => s is "NA" or "N/A" or "Unknown" ? "" : s;
                 Speed = Clean(parts[1]); Eta = Clean(parts[2]); Size = Clean(parts[3]); if (Size.Length == 0) Size = Clean(parts[4]);
-                Title = Clean(parts[5]); State = JobState.Downloading; Stage = "Downloading";
+                Title = Clean(parts[5]); State = JobState.Downloading; Stage = "Downloading"; botCheckStreak = 0;
             }
         } else {
             AddLog(line);
-            if (line.StartsWith("ERROR:")) LastError = line[6..].Trim();
+            if (line.StartsWith("ERROR:")) {
+                LastError = line[6..].Trim();
+                if (IsBotCheck(line) && ++botCheckStreak >= BotCheckLimit && Options.StopOnBotCheck && !StoppedForBotCheck) {
+                    StoppedForBotCheck = true;
+                    AddLog($"[Jethriki] Stopped after {botCheckStreak} \"not a bot\" errors in a row. Anything already downloaded is kept.");
+                    try { BotStop?.Cancel(); } catch (ObjectDisposedException) { }
+                }
+            } else if (line.Contains("has already been downloaded")) botCheckStreak = 0;
             if (line.StartsWith('[')) {
                 int end = line.IndexOf(']'); string tag = end > 0 ? line[1..end] : "";
                 if (new[] { "Merger", "ExtractAudio", "Metadata", "SplitChapters", "ModifyChapters", "EmbedThumbnail", "EmbedSubtitle", "VideoRemuxer", "VideoConvertor", "ThumbnailsConvertor", "SubtitlesConvertor", "SponsorBlock" }.Contains(tag)) { State = JobState.Processing; Stage = tag; }
@@ -60,7 +75,7 @@ public sealed class DownloadQueue(ToolPaths tools, Action<string>? recycle = nul
         lock (gate) {
             if (!job.Done) return;
             job.Cancellation.Dispose(); job.Cancellation = new(); job.State = JobState.Queued; job.Stage = "Queued";
-            job.Progress = 0; job.LastError = ""; job.OutputFiles = []; job.Speed = ""; job.Eta = ""; job.Log.Clear();
+            job.Progress = 0; job.LastError = ""; job.StoppedForBotCheck = false; job.ResetBotCheck(); job.OutputFiles = []; job.Speed = ""; job.Eta = ""; job.Log.Clear();
         }
         Pump();
     }
@@ -98,12 +113,19 @@ public sealed class DownloadQueue(ToolPaths tools, Action<string>? recycle = nul
             }
             var args = CommandBuilder.Arguments(o, [job.Url], tools, paths, o.SplitChapters ? chapters : null, work, infoFile);
             job.AddLog("$ " + CommandBuilder.Display(tools.Ytdlp, args));
-            var result = await ProcessRunner.RunAsync(tools.Ytdlp, args, job.HandleLine, cancellation, captureOutput: false);
+            using var botStop = new CancellationTokenSource(); job.BotStop = botStop;
+            using var run = CancellationTokenSource.CreateLinkedTokenSource(cancellation, botStop.Token);
+            ProcessResult result;
+            try { result = await ProcessRunner.RunAsync(tools.Ytdlp, args, job.HandleLine, run.Token, captureOutput: false); }
+            catch (OperationCanceledException) when (job.StoppedForBotCheck && !cancellation.IsCancellationRequested) { result = new(1, "", ""); }
+            finally { job.BotStop = null; }
             var main = File.Exists(paths) ? (await File.ReadAllLinesAsync(paths, cancellation)).Where(p => !string.IsNullOrWhiteSpace(p)).ToArray() : [];
             var outputs = main.Distinct(StringComparer.OrdinalIgnoreCase).ToList(); job.OutputFiles = outputs.ToArray();
+            string problem = job.StoppedForBotCheck ? (outputs.Count == 0 ? DownloadJob.BotCheckMessage : $"Stopped after {outputs.Count} item{(outputs.Count == 1 ? "" : "s")}: {DownloadJob.BotCheckMessage}")
+                : DownloadJob.IsBotCheck(job.LastError) ? DownloadJob.BotCheckMessage : job.LastError;
             if (result.ExitCode != 0) {
-                if (outputs.Count == 0) throw new InvalidOperationException(job.LastError.Length > 0 ? job.LastError : "yt-dlp exited with code " + result.ExitCode);
-                job.AddLog("Download completed with an error: " + job.LastError);
+                if (outputs.Count == 0) throw new InvalidOperationException(problem.Length > 0 ? problem : "yt-dlp exited with code " + result.ExitCode);
+                job.AddLog("Download completed with an error: " + problem);
             }
             if (File.Exists(chapters)) {
                 int index = 0;
@@ -143,7 +165,7 @@ public sealed class DownloadQueue(ToolPaths tools, Action<string>? recycle = nul
             if (o.MakesRingtone) outputs = Ringtone.Finalize(outputs, o.NoOverwrites, job.AddLog);
             job.OutputFiles = outputs.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(); job.Progress = 1;
             job.State = result.ExitCode == 0 ? JobState.Finished : JobState.Warning;
-            job.Stage = result.ExitCode == 0 ? "Done" : "Done with warnings: " + job.LastError;
+            job.Stage = result.ExitCode == 0 ? "Done" : "Done with warnings: " + problem;
         } catch (OperationCanceledException) { job.State = JobState.Cancelled; job.Stage = "Cancelled"; }
         catch (Exception error) { job.State = JobState.Failed; job.Stage = error.Message; job.AddLog("ERROR: " + error.Message); }
         finally { try { if (Directory.Exists(work)) Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { } Pump(); }

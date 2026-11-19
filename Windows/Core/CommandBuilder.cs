@@ -70,6 +70,7 @@ public static class CommandBuilder {
         if (!string.IsNullOrWhiteSpace(o.RateLimit)) Add("-r", o.RateLimit.Trim());
         if (o.ConcurrentFragments > 1) Add("-N", o.ConcurrentFragments.ToString());
         if (o.SleepInterval > 0) Add("--sleep-interval", o.SleepInterval.ToString());
+        if (o.SleepRequests > 0) Add("--sleep-requests", o.SleepRequests.ToString());
         Add("-P", o.OutputDirectory, "-o", OutputTemplate(o));
         if (o.SplitChapters && o.ChaptersInFolder) Add("-o", "chapter:%(title)s/%(section_number)03d - %(section_title)s.%(ext)s");
         Flag(o.RestrictFilenames, "--restrict-filenames"); Flag(o.NoOverwrites, "--no-overwrites"); Flag(o.NoMtime, "--no-mtime");
