@@ -62,6 +62,32 @@ try {
         var command = CommandBuilder.Arguments(preset.Options, ["https://example.com/video"]);
         Check(command.Contains("--windows-filenames") && command[^1] == "https://example.com/video", "Preset command: " + preset.Name);
     }
+    // YouTube bot check: stop after 3 in a row, reset when an item gets through.
+    const string bot = "ERROR: [youtube] x: Sign in to confirm you\u2019re not a bot. This helps protect our community.";
+    var botJob = new DownloadJob("u", new DownloadOptions(), new Dictionary<string, string>());
+    botJob.HandleLine(bot, true); botJob.HandleLine(bot, true); botJob.HandleLine("[download] x has already been downloaded", true); botJob.HandleLine(bot, true); botJob.HandleLine(bot, true);
+    Check(!botJob.StoppedForBotCheck, "Bot check: streak resets when an item gets through");
+    botJob.HandleLine(bot, true);
+    Check(botJob.StoppedForBotCheck && botJob.Log.Any(l => l.Contains("Stopped after 3")), "Bot check: stops after 3 in a row");
+    var keepGoing = new DownloadJob("u", new DownloadOptions { StopOnBotCheck = false }, new Dictionary<string, string>());
+    for (int i = 0; i < 5; i++) keepGoing.HandleLine(bot, true);
+    Check(!keepGoing.StoppedForBotCheck, "Bot check: setting off keeps going");
+    Check(DownloadJob.IsBotCheck("Sign in to confirm you're not a bot") && !DownloadJob.IsBotCheck("ERROR: Video unavailable"), "Bot check: detection");
+    Check(CommandBuilder.Arguments(new DownloadOptions { SleepRequests = 2 }, ["u"]) is var sr && sr.Contains("--sleep-requests") && sr[sr.IndexOf("--sleep-requests") + 1] == "2"
+        && !CommandBuilder.Arguments(new DownloadOptions(), ["u"]).Contains("--sleep-requests"), "--sleep-requests only when set");
+    if (!OperatingSystem.IsWindows()) {
+        // End to end through the queue with a stand-in yt-dlp: item 1 downloads, then every item hits the bot check.
+        var botDir = Path.Combine(work, "botcheck"); Directory.CreateDirectory(botDir);
+        var fakeYtdlp = Path.Combine(botDir, "yt-dlp");
+        File.WriteAllText(fakeYtdlp, "#!/bin/bash\npf=\"\"; p2=\"\"; p1=\"\"\nfor a in \"$@\"; do [[ \"$p2\" == \"--print-to-file\" && \"$p1\" == \"after_move:filepath\" ]] && pf=\"$a\"; p2=\"$p1\"; p1=\"$a\"; done\n" +
+            $"touch '{botDir}/one.mp4'; echo '{botDir}/one.mp4' >> \"$pf\"\nfor i in 2 3 4 5 6 7 8 9; do echo \"{bot.Replace("\u2019", "'")}\" >&2; sleep 0.4; done\ntouch '{botDir}/reached-end'\nexit 1\n");
+        File.SetUnixFileMode(fakeYtdlp, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var fakeTools = new ToolPaths(fakeYtdlp, "/usr/bin/true", "/usr/bin/true", "/usr/bin/true");
+        var botQueue = new DownloadQueue(fakeTools); botQueue.Enqueue(["https://www.youtube.com/playlist?list=PLx"], new DownloadOptions { OutputDirectory = botDir });
+        var botRun = botQueue.Jobs[0]; await botRun.Completion.WaitAsync(TimeSpan.FromSeconds(30));
+        Check(botRun.State == JobState.Warning && botRun.Stage.Contains("Stopped after 1 item") && botRun.OutputFiles.Length == 1 && !File.Exists(Path.Combine(botDir, "reached-end")),
+            "Bot check: queue stops the playlist, keeps the finished item and says what to do");
+    }
     var o = new DownloadOptions { PlaylistItems = "3,5", ChapterSource = "comments" };
     var load = CommandBuilder.Arguments(o, ["VIDEO"], infoFile: "chapters.json");
     Check(load.Contains("--load-info-json") && !load.Contains("-I") && !load.Contains("VIDEO"), "Loaded playlist does not select item range twice");

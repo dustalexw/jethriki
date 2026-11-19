@@ -613,6 +613,12 @@ struct DownloadOptions: Codable, Equatable {
     var proxy = ""
     var cookieBrowser: CookieBrowser = .none
     var sleepInterval = 0
+    /// Seconds between yt-dlp's requests while it reads each video's info (`--sleep-requests`).
+    /// This is where YouTube's "confirm you're not a bot" check usually trips on big playlists.
+    var sleepRequests = 0
+    /// Stop a run after several "confirm you're not a bot" errors in a row instead of hitting every
+    /// remaining item (which only makes YouTube's block last longer).
+    var stopOnBotCheck = true
 
     // Output
     var outputDirectory: String = (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")

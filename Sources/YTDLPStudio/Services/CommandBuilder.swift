@@ -143,6 +143,7 @@ enum CommandBuilder {
         if !o.proxy.trimmed.isEmpty { a += ["--proxy", o.proxy.trimmed] }
         a += BrowserCookies.arguments(for: o.cookieBrowser)
         if o.sleepInterval > 0 { a += ["--sleep-interval", "\(o.sleepInterval)"] }
+        if o.sleepRequests > 0 { a += ["--sleep-requests", "\(o.sleepRequests)"] }
 
         // Output
         a += ["-P", o.outputDirectory, "-o", outputTemplate(o)]

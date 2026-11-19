@@ -484,7 +484,10 @@ struct NetworkOptionsView: View {
             Section("Reliability") {
                 Stepper("Retries: \(o.retries)", value: $o.retries, in: 0...50)
                 Stepper("Wait between downloads: \(o.sleepInterval)s", value: $o.sleepInterval, in: 0...120, step: 5)
-                Hint("A short wait helps avoid rate-limiting on large playlists.")
+                Stepper("Wait between requests: \(o.sleepRequests)s", value: $o.sleepRequests, in: 0...30)
+                Hint("Waits help avoid rate-limiting on large playlists. If YouTube asks to \u{201C}confirm you\u{2019}re not a bot\u{201D}, try 5–10s between downloads and 1–2s between requests.")
+                Toggle("Stop after repeated \u{201C}not a bot\u{201D} errors", isOn: $o.stopOnBotCheck)
+                Hint("Stops a playlist after \(DownloadJob.botCheckLimit) in a row and keeps what already downloaded. Carrying on only makes YouTube\u{2019}s block last longer.")
             }
             Section("Login & privacy") {
                 Picker("Use cookies from", selection: $o.cookieBrowser) {

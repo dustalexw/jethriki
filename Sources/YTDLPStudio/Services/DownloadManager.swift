@@ -57,6 +57,11 @@ final class DownloadJob: ObservableObject, Identifiable {
 
     var runner: ProcessRunner?
     var wasCancelled = false
+    /// "Confirm you're not a bot" errors in a row; reset whenever an item gets through.
+    var botCheckStreak = 0
+    /// Set when the run was stopped because of `botCheckStreak`.
+    var stoppedForBotCheck = false
+    static let botCheckLimit = 3
     var lastError: String?
     var pendingEncodes: [String] = []
     var encodeDuration: Double?
@@ -85,6 +90,8 @@ final class DownloadJob: ObservableObject, Identifiable {
 
     func resetForRun() {
         wasCancelled = false
+        botCheckStreak = 0
+        stoppedForBotCheck = false
         lastError = nil
         progress = 0
         speed = ""; eta = ""; size = ""; itemInfo = ""
@@ -131,6 +138,7 @@ final class DownloadJob: ObservableObject, Identifiable {
             size = part(3).isEmpty ? (part(4).isEmpty ? "" : "~" + part(4)) : part(3)
             if title.isEmpty { title = part(5) }
             if status != .downloading { status = .downloading }
+            botCheckStreak = 0
             return
         }
 
@@ -141,10 +149,28 @@ final class DownloadJob: ObservableObject, Identifiable {
         }
         if line.hasPrefix("ERROR:") {
             lastError = String(line.dropFirst(6)).trimmed
+            if Self.isBotCheck(line) { noteBotCheck() }
+        } else if line.contains("has already been downloaded") {
+            botCheckStreak = 0
         } else if line.hasPrefix("["), let close = line.firstIndex(of: "]") {
             let tag = String(line[line.index(after: line.startIndex)..<close])
             if let friendly = Self.ppNames[tag] { status = .processing(friendly) }
         }
+    }
+
+    /// YouTube's "Sign in to confirm you're not a bot" (straight or curly apostrophe).
+    static func isBotCheck(_ line: String) -> Bool {
+        line.replacingOccurrences(of: "\u{2019}", with: "'").localizedCaseInsensitiveContains("confirm you're not a bot")
+    }
+
+    static let botCheckMessage = "YouTube is asking to confirm you\u{2019}re not a bot. Wait about an hour, check that cookies come from the browser you\u{2019}re signed in to YouTube with, add waits in Network & Login, then Retry."
+
+    private func noteBotCheck() {
+        botCheckStreak += 1
+        guard options.stopOnBotCheck, botCheckStreak >= Self.botCheckLimit, !stoppedForBotCheck, let runner else { return }
+        stoppedForBotCheck = true
+        appendLog("[Jethriki] Stopped after \(botCheckStreak) \u{201C}not a bot\u{201D} errors in a row. Anything already downloaded is kept.")
+        runner.terminate()
     }
 
     // MARK: Parsing ffmpeg output
@@ -384,8 +410,13 @@ final class DownloadManager: ObservableObject {
             pump()
             return
         }
-        if code != 0 {
-            let msg = job.lastError ?? "yt-dlp exited with code \(code)"
+        if job.stoppedForBotCheck {
+            let msg = files.isEmpty ? DownloadJob.botCheckMessage
+                : "Stopped after \(files.count) item\(files.count == 1 ? "" : "s"): " + DownloadJob.botCheckMessage
+            job.status = files.isEmpty ? .failed(msg) : .warning(msg)
+            if files.isEmpty { pump(); return }
+        } else if code != 0 {
+            let msg = DownloadJob.isBotCheck(job.lastError ?? "") ? DownloadJob.botCheckMessage : job.lastError ?? "yt-dlp exited with code \(code)"
             job.status = files.isEmpty ? .failed(msg) : .warning(msg)
             if files.isEmpty { pump(); return }
         }

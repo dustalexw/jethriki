@@ -45,7 +45,7 @@ enum OptionCategory: String, CaseIterable, Identifiable {
         case .metadata: return o.writeThumbnail || o.writeInfoJSON || o.writeDescription || o.writeComments
         case .trim: return o.trimEnabled
         case .playlist: return o.playlistMode != .auto || !o.playlistItems.isEmpty || o.useArchive
-        case .network: return !o.rateLimit.isEmpty || !o.proxy.isEmpty || o.cookieBrowser != .none || o.sleepInterval > 0
+        case .network: return !o.rateLimit.isEmpty || !o.proxy.isEmpty || o.cookieBrowser != .none || o.sleepInterval > 0 || o.sleepRequests > 0
         case .output: return o.filenameTemplate != d.filenameTemplate || o.restrictFilenames
         case .advanced: return !o.extraArgs.trimmed.isEmpty
         }

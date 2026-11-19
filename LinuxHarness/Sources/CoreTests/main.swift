@@ -753,5 +753,62 @@ do {
     check(k.status == .finished, "turning the option off still downloads normally")
 }
 
+section("YouTube bot check: stop a playlist after repeated errors")
+do {
+    let dir = outRoot + "/botcheck"
+    try? FileManager.default.removeItem(atPath: dir)
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    // A stand-in yt-dlp: item 1 downloads, every later item hits YouTube's bot check (curly apostrophe, as YouTube sends it).
+    func fake(firstSucceeds: Bool) -> String {
+        let path = dir + "/fake-ytdlp-\(firstSucceeds).sh"
+        let script = """
+        #!/bin/bash
+        pf=""; p2=""; p1=""
+        for a in "$@"; do [[ "$p2" == "--print-to-file" && "$p1" == "after_move:filepath" ]] && pf="$a"; p2="$p1"; p1="$a"; done
+        rm -f "\(dir)/reached-end"
+        echo "[download] Downloading item 1 of 10" >&2
+        if \(firstSucceeds); then echo "[download] Destination: \(dir)/one.mp4" >&2; touch "\(dir)/one.mp4"; echo "\(dir)/one.mp4" >> "$pf"; fi
+        for i in 2 3 4 5 6 7 8 9 10; do
+          echo "[download] Downloading item $i of 10" >&2
+          echo "ERROR: [youtube] vid$i: Sign in to confirm you’re not a bot. This helps protect our community." >&2
+          sleep 0.4
+        done
+        touch "\(dir)/reached-end"
+        exit 1
+        """
+        try? script.write(toFile: path, atomically: true, encoding: .utf8)
+        _ = runSync("/bin/chmod", ["+x", path])
+        return path
+    }
+    func run(firstSucceeds: Bool, stop: Bool) -> DownloadJob {
+        var o = DownloadOptions(); o.outputDirectory = dir; o.stopOnBotCheck = stop; o.chapterSource = .youtube
+        let fakeTools = ToolSnapshot(ytdlp: fake(firstSucceeds: firstSucceeds), ffmpeg: snap.ffmpeg, environment: snap.environment)
+        manager.enqueue(urls: ["https://www.youtube.com/playlist?list=PLtest"], options: o, tools: fakeTools)
+        let job = manager.jobs.last!
+        _ = waitUntil(30) { job.status.isDone }
+        return job
+    }
+    let stopped = run(firstSucceeds: true, stop: true)
+    check(stopped.stoppedForBotCheck && !FileManager.default.fileExists(atPath: dir + "/reached-end"), "stops the run after 3 bot checks in a row", stopped.status.label)
+    if case .warning(let m) = stopped.status { check(m.contains("Stopped after 1 item") && m.contains("not a bot"), "keeps the finished item and explains what to do", m) }
+    else { check(false, "should finish with a warning", stopped.status.label) }
+    check(stopped.outputFiles == [dir + "/one.mp4"], "item downloaded before the block is kept", "\(stopped.outputFiles)")
+    check(stopped.log.contains { $0.contains("Stopped after 3") }, "log says why it stopped")
+
+    let nothing = run(firstSucceeds: false, stop: true)
+    check(nothing.status == .failed(DownloadJob.botCheckMessage), "nothing downloaded → failed with the friendly message", nothing.status.label)
+
+    let kept = run(firstSucceeds: true, stop: false)
+    check(!kept.stoppedForBotCheck && FileManager.default.fileExists(atPath: dir + "/reached-end"), "turned off → runs to the end")
+    if case .warning(let m) = kept.status { check(m == DownloadJob.botCheckMessage, "raw bot-check error replaced by the friendly message", m) }
+    else { check(false, "should finish with a warning", kept.status.label) }
+
+    check(DownloadJob.isBotCheck("ERROR: [youtube] x: Sign in to confirm you're not a bot") && !DownloadJob.isBotCheck("ERROR: Video unavailable"), "detects straight and curly apostrophes only for the bot check")
+    var so = DownloadOptions(); so.sleepRequests = 2
+    let sargs = CommandBuilder.arguments(for: so, urls: ["u"])
+    check(sargs.joined(separator: " ").contains("--sleep-requests 2") && !CommandBuilder.arguments(for: DownloadOptions(), urls: ["u"]).contains("--sleep-requests"),
+          "--sleep-requests only when set")
+}
+
 print("\n\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

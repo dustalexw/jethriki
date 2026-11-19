@@ -222,8 +222,14 @@ public sealed class DownloadOptions {
     [Setting("Network & login", "Cookie Browser", Choices = "none=No cookies|chrome=Chrome|firefox=Firefox|brave=Brave|edge=Edge|chromium=Chromium|opera=Opera|vivaldi=Vivaldi", Hint = "Close the browser before importing cookies. Some Chromium browser encryption may require a cookies.txt file in Additional arguments.")]
     public string CookieBrowser { get; set; } = "none";
 
-    [Setting("Network & login", "Sleep Interval")]
+    [Setting("Network & login", "Wait between downloads (s)", Max = 120, Hint = "A short wait helps avoid rate-limiting on large playlists. If YouTube asks to confirm you're not a bot, try 5-10 seconds.")]
     public int SleepInterval { get; set; } = 0;
+
+    [Setting("Network & login", "Wait between requests (s)", Max = 30, Hint = "Slows down how fast yt-dlp reads each video's info, where YouTube's bot check usually trips. Try 1-2 seconds.")]
+    public int SleepRequests { get; set; } = 0;
+
+    [Setting("Network & login", "Stop after repeated \"not a bot\" errors", Hint = "Stops a playlist after 3 in a row and keeps what already downloaded. Carrying on only makes YouTube's block last longer.")]
+    public bool StopOnBotCheck { get; set; } = true;
 
     [Setting("Output", "Download folder", Hint = "Files are saved here. Each job snapshots this folder when queued.")]
     public string OutputDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
