@@ -11,7 +11,7 @@ for f in Models/Options.swift Models/OptionsStore.swift Services/CommandBuilder.
          Services/DownloadManager.swift Services/MetadataFetcher.swift \
          Services/ProcessRunner.swift Services/ToolLocator.swift Services/ChapterTagger.swift \
          Services/CommentChapterParser.swift Services/RingtoneShare.swift Services/AndroidSync.swift \
-         Services/BrowserCookies.swift; do
+         Services/BrowserCookies.swift Services/MediaImport.swift; do
   ln -sf "../../../Sources/YTDLPStudio/$f" "Sources/Core/$(basename "$f")"
 done
 command -v swift >/dev/null || export PATH=/usr/libexec/swift/bin:$PATH

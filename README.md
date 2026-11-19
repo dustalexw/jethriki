@@ -91,6 +91,17 @@ VideoToolbox H.264/HEVC (hardware), VP9, SVT-AV1 or ProRes 422 HQ, with CRF or b
 speed preset, downscaling and audio re-encode. Optionally replaces the original
 (which goes to the Trash). Also a raw `--postprocessor-args` field.
 
+**Import local files** — the Import field under the link field takes video and audio
+files already on your computer (drop them on it, or click to choose). **Remux to MP4** or
+**Remux to MKV** copies the streams into the other container without re-encoding,
+keeping chapters, metadata and text subtitles; anything MP4 can't hold is handled for you
+(Vorbis or PCM audio becomes AAC, ASS/SRT subtitles become MP4 text subtitles, picture
+subtitles and fonts are left out and noted in the log). **Extract audio** saves the first
+audio track as-is (AAC → .m4a, Opus → .opus, and so on) or converts it to MP3, M4A,
+FLAC, WAV or Opus. Results are saved next to the original — or in the download folder —
+and never overwrite an existing file. Imports run in the regular queue with progress,
+cancel and retry.
+
 **Chapters & SponsorBlock** — choose YouTube chapters, comment timestamps, or comments
 only when YouTube chapters are missing; preview and select a comment track list; embed chapters, split into one file per chapter
 (optionally into a folder), remove chapters by regex, and SponsorBlock mark-or-cut for

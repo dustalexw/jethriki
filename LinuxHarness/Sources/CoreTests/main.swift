@@ -753,5 +753,100 @@ do {
     check(k.status == .finished, "turning the option off still downloads normally")
 }
 
+section("Import: extract audio and remux local files")
+do {
+    let srv = ProcessInfo.processInfo.environment["SRV"] ?? "/tmp/srv"
+    let dir = outRoot + "/import"
+    try? FileManager.default.removeItem(atPath: dir)
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    let ff = snap.ffmpeg ?? "/usr/bin/ffmpeg"
+    // An MKV like the ones people actually have: H.264, Vorbis audio (not allowed in MP4), a text subtitle and
+    // chapters.
+    try? "1\n00:00:01,000 --> 00:00:04,000\nHello there\n".write(toFile: dir + "/subs.srt", atomically: true, encoding: .utf8)
+    let mkv = dir + "/Movie Night.mkv"
+    let made = runSync(ff, ["-loglevel", "error", "-y", "-i", srv + "/clip.mp4", "-i", dir + "/subs.srt",
+                            "-map", "0:v", "-map", "0:a", "-map", "1:s", "-map_chapters", "0",
+                            "-c:v", "copy", "-c:a", "libvorbis", "-c:s", "ass", mkv])
+    check(made.status == 0, "fixture MKV built", made.stderr)
+
+    func runImport(_ files: [String], _ request: ImportRequest, to out: String? = nil) -> DownloadJob {
+        manager.enqueueImports(files: files, request: request, options: DownloadOptions(), tools: snap, outputDirectory: out)
+        let job = manager.jobs.last!
+        let ok = waitUntil(60) { job.status.isDone }
+        if !ok || job.status != .finished {
+            print("    status: \(job.status.label)\n    log tail:\n      " + job.log.suffix(6).joined(separator: "\n      "))
+        }
+        return job
+    }
+
+    let toMP4 = runImport([mkv], ImportRequest(action: .remuxMP4))
+    let mp4 = toMP4.outputFiles.first ?? ""
+    check(toMP4.status == .finished && mp4 == dir + "/Movie Night.mp4", "MKV → MP4 saved next to the original", "\(toMP4.status.label) \(mp4)")
+    let p1 = probe(mp4)
+    check(p1.vcodec == "h264" && p1.acodec == "aac", "video copied, Vorbis converted to AAC for MP4", "\(p1)")
+    let s1 = runSync("/usr/bin/ffprobe", ["-v", "error", "-select_streams", "s", "-show_entries", "stream=codec_name", "-of", "csv=p=0", mp4]).stdout.trimmed
+    check(s1 == "mov_text", "text subtitle kept as mov_text", s1)
+    let c1 = runSync("/usr/bin/ffprobe", ["-v", "error", "-show_chapters", "-of", "csv=p=0", mp4]).stdout
+    check(c1.components(separatedBy: "\n").filter { !$0.isEmpty }.count == 2, "chapters carried over")
+    check(toMP4.log.contains { $0.contains("Converted vorbis audio") }, "conversion noted in the log")
+    check(abs((p1.duration ?? 0) - 20) < 0.5, "full length (\(p1.duration ?? 0)s)")
+
+    let back = runImport([mp4], ImportRequest(action: .remuxMKV))
+    let mkv2 = back.outputFiles.first ?? ""
+    check(back.status == .finished && mkv2 == dir + "/Movie Night (2).mkv", "MP4 → MKV never overwrites the existing MKV", "\(back.status.label) \(mkv2)")
+    let s2 = runSync("/usr/bin/ffprobe", ["-v", "error", "-select_streams", "s", "-show_entries", "stream=codec_name", "-of", "csv=p=0", mkv2]).stdout.trimmed
+    check(probe(mkv2).acodec == "aac" && s2 == "subrip", "MKV keeps AAC; mov_text subtitle becomes SRT", "\(probe(mkv2)) \(s2)")
+
+    let orig = runImport([srv + "/clip.mp4"], ImportRequest(action: .extractAudio, audioFormat: .original), to: dir)
+    let m4a = orig.outputFiles.first ?? ""
+    check(orig.status == .finished && m4a == dir + "/clip.m4a" && probe(m4a).acodec == "aac" && probe(m4a).vcodec == nil,
+          "extract original AAC → .m4a without re-encoding", "\(orig.status.label) \(m4a)")
+    let flac = runImport([mkv], ImportRequest(action: .extractAudio, audioFormat: .flac))
+    check(flac.status == .finished && probe(flac.outputFiles.first ?? "").acodec == "flac", "extract to FLAC", flac.status.label)
+    let ogg = runImport([mkv], ImportRequest(action: .extractAudio, audioFormat: .original))
+    check(ogg.outputFiles.first?.hasSuffix("/Movie Night.ogg") == true && probe(ogg.outputFiles.first ?? "").acodec == "vorbis",
+          "original Vorbis → .ogg", "\(ogg.outputFiles)")
+    let mp3 = runImport([mkv, srv + "/plain.mp4"], ImportRequest(action: .extractAudio, audioFormat: .mp3), to: dir)
+    let both = manager.jobs.suffix(2)
+    check(both.allSatisfy { $0.status == .finished && probe($0.outputFiles.first ?? "").acodec == "mp3" }, "two files at once → MP3", mp3.status.label)
+
+    let silent = dir + "/silent.mp4"
+    _ = runSync(ff, ["-loglevel", "error", "-y", "-i", srv + "/plain.mp4", "-an", "-c", "copy", silent])
+    let none = runImport([silent], ImportRequest(action: .extractAudio))
+    check(none.status == .failed("This file has no audio track to extract."), "no audio track → clear error", none.status.label)
+
+    let vp8 = dir + "/old.webm"
+    _ = runSync(ff, ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=10:duration=2", "-c:v", "libvpx", vp8])
+    let refused = runImport([vp8], ImportRequest(action: .remuxMP4))
+    if case .failed(let m) = refused.status { check(m.contains("VP8") && m.contains("MKV"), "VP8 → MP4 refused with advice", m) }
+    else { check(false, "VP8 → MP4 should fail", refused.status.label) }
+    check(!FileManager.default.fileExists(atPath: dir + "/old.mp4"), "no partial file left behind")
+
+    // Cancel mid-remux of a long file.
+    let long = dir + "/long.mkv"
+    _ = runSync(ff, ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=600",
+                     "-f", "lavfi", "-i", "sine=duration=600", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "flac", "-shortest", long])
+    manager.enqueueImports(files: [long], request: ImportRequest(action: .extractAudio, audioFormat: .wav), options: DownloadOptions(), tools: snap)
+    let cj = manager.jobs.last!
+    _ = waitUntil(30) { if case .encoding = cj.status { return true }; return cj.status.isDone }
+    manager.cancel(cj)
+    _ = waitUntil(15) { cj.status.isDone }
+    check(cj.status == .cancelled && !FileManager.default.fileExists(atPath: dir + "/long.wav"), "cancel removes the partial output", cj.status.label)
+
+    // Planning edge cases without FFmpeg.
+    let media = ProbedMedia(streams: [ProbedStream(index: 0, type: "video", codec: "hevc", attachedPicture: false),
+                                      ProbedStream(index: 1, type: "audio", codec: "eac3", attachedPicture: false),
+                                      ProbedStream(index: 2, type: "subtitle", codec: "hdmv_pgs_subtitle", attachedPicture: false),
+                                      ProbedStream(index: 3, type: "attachment", codec: "ttf", attachedPicture: false)], duration: 60)
+    let plan = try? MediaImport.plan(input: "/m/a.mkv", media: media, request: ImportRequest(action: .remuxMP4), outputDirectory: "/m") { _ in false }
+    check(plan?.arguments.contains("hvc1") == true && plan?.arguments.contains("0:2") == false && plan?.arguments.contains("0:3") == false,
+          "HEVC tagged hvc1; PGS subtitles and fonts left out of MP4", "\(plan?.arguments ?? [])")
+    check(plan?.notes.count == 2, "both omissions explained", "\(plan?.notes ?? [])")
+    let same = MediaImport.uniquePath(directory: "/m", base: "a", ext: "mkv", avoiding: "/m/a.mkv") { _ in false }
+    check(same == "/m/a (2).mkv", "never writes over the input itself", same)
+    check(ImportAction.suggested(for: "x.MKV") == .remuxMP4 && ImportAction.suggested(for: "x.mp4") == .remuxMKV
+          && ImportAction.suggested(for: "x.flac") == .extractAudio, "suggested action follows the file type")
+}
+
 print("\n\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

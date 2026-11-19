@@ -4,13 +4,16 @@ using System.Text.Json.Nodes;
 namespace YtdlpStudio.Core;
 
 public enum JobState { Queued, Starting, Downloading, Processing, Finished, Warning, Failed, Cancelled }
-public sealed class DownloadJob(string url, DownloadOptions options, IReadOnlyDictionary<string, string> selections) {
+public sealed class DownloadJob(string url, DownloadOptions options, IReadOnlyDictionary<string, string> selections, ImportRequest? import = null) {
     public Guid Id { get; } = Guid.NewGuid();
     public string Url { get; } = url;
+    /// Set for a local file from the Import field; Url is then the file's path.
+    public ImportRequest? Import { get; } = import;
+    public bool IsImport => Import != null;
     public DownloadOptions Options { get; } = options.Clone();
     public IReadOnlyDictionary<string, string> Selections { get; } = new Dictionary<string, string>(selections);
     public volatile JobState State = JobState.Queued;
-    public string Title = url, Stage = "Queued", Speed = "", Eta = "", Size = "", LastError = "";
+    public string Title = import != null ? Path.GetFileName(url) : url, Stage = "Queued", Speed = "", Eta = "", Size = "", LastError = "";
     public double Progress;
     public string[] OutputFiles = [];
     public ConcurrentQueue<string> Log { get; } = new();
@@ -48,6 +51,15 @@ public sealed class DownloadQueue(ToolPaths tools, Action<string>? recycle = nul
         lock (gate) foreach (var url in urls) jobs.Add(new(url, options, selections ?? new Dictionary<string, string>()));
         Pump();
     }
+    /// Queues local files from the Import field, each saved next to the original unless outputDirectory is given.
+    public void EnqueueImports(IEnumerable<string> files, ImportRequest request, DownloadOptions options, string? outputDirectory = null) {
+        tools.EnsureAvailable();
+        lock (gate) foreach (var file in files) {
+            var o = options.Clone(); o.OutputDirectory = outputDirectory ?? Path.GetDirectoryName(Path.GetFullPath(file))!;
+            jobs.Add(new(file, o, new Dictionary<string, string>(), request));
+        }
+        Pump();
+    }
     public void Cancel(DownloadJob job) {
         lock (gate) {
             job.Cancellation.Cancel();
@@ -81,6 +93,12 @@ public sealed class DownloadQueue(ToolPaths tools, Action<string>? recycle = nul
         string work = Path.Combine(Path.GetTempPath(), "YTDLPStudio", job.Id + "-" + Guid.NewGuid());
         try {
             var o = job.Options; var cancellation = job.Cancellation.Token;
+            if (job.Import is { } import) {
+                var plan = await MediaImport.RunAsync(job, import, tools, cancellation);
+                job.OutputFiles = [plan.Output]; job.Progress = 1; job.Speed = "";
+                job.State = JobState.Finished; job.Stage = "Done · " + Path.GetFileName(plan.Output);
+                return;
+            }
             Directory.CreateDirectory(work); Directory.CreateDirectory(o.OutputDirectory);
             string paths = Path.Combine(work, "paths.txt"), chapters = Path.Combine(work, "chapters.jsonl"); string? infoFile = null;
             if (o.ChapterSource != "youtube") {
