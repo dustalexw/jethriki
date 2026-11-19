@@ -11,11 +11,15 @@ on:
         description: Publish this version for Windows, macOS and Linux after all checks pass (never overwrites an existing release)
         type: boolean
         default: false
+      publish_macos_release:
+        description: Publish this version for macOS only, after the macOS checks pass (never overwrites an existing release)
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
   # Single source for the release version; both build scripts stamp it into the apps.
-  VERSION: '2.9.0'
+  VERSION: '2.9.1'
 jobs:
   windows:
     runs-on: windows-latest
@@ -172,4 +176,34 @@ jobs:
           fi
           gh release create "$tag" "$win" "$mac" "$linux" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Jethriki $VERSION — Windows, macOS and Linux" \
+            --notes-file RELEASE-NOTES.md --latest
+
+  release-macos:
+    # A macOS-only release: waits for the macOS build alone, so it can ship while another platform is red.
+    needs: [macos]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_macos_release && !inputs.publish_release && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: Jethriki-${{ env.VERSION }}-macOS
+          path: package
+      - name: Publish macOS package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$VERSION"
+          mac="package/Jethriki-$VERSION-macOS.zip"
+          [[ -f "$mac" ]] || { echo "::error::Missing the macOS package"; exit 1; }
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Published releases are never replaced; bump VERSION at the top of this workflow instead.
+            echo "::error::$tag is already published. Bump VERSION in .github/workflows/build.yml to release a new build."
+            exit 1
+          fi
+          gh release create "$tag" "$mac" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Jethriki $VERSION — macOS" \
             --notes-file RELEASE-NOTES.md --latest

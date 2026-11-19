@@ -92,6 +92,47 @@ enum BrowserCookies {
         source(for: .safari, home: home) == nil
     }
 
+    /// Browsers whose data folder exists but macOS refuses to let this app open.
+    /// macOS 27 denies other apps' Application Support data, without asking, to any
+    /// app that doesn't have Full Disk Access; to the app it looks like an empty folder.
+    static func blocked(home: String = defaultHome) -> [String] {
+        let support = (home as NSString).appendingPathComponent("Library/Application Support")
+        var names: [String] = []
+        for browser in preference where browser != .safari {
+            if browser == .firefox {
+                names += firefoxFamily.filter {
+                    isBlocked((support as NSString).appendingPathComponent($0.folder))
+                }.map(\.name)
+            } else if let folder = chromiumFolders[browser],
+                      isBlocked((support as NSString).appendingPathComponent(folder)) {
+                names.append(browser.label)
+            }
+        }
+        return names
+    }
+
+    /// True when listing the folder fails because access is refused, not because it is missing.
+    private static func isBlocked(_ path: String) -> Bool {
+        do {
+            _ = try FileManager.default.contentsOfDirectory(atPath: path)
+            return false
+        } catch {
+            let top = error as NSError
+            let errors = [top] + [top.userInfo[NSUnderlyingErrorKey] as? NSError].compactMap { $0 }
+            return errors.contains { e in
+                (e.domain == NSCocoaErrorDomain && e.code == CocoaError.Code.fileReadNoPermission.rawValue)
+                    || (e.domain == NSPOSIXErrorDomain && (e.code == Int(EPERM) || e.code == Int(EACCES)))
+            }
+        }
+    }
+
+    /// The names a browser choice can go by on disk ("Firefox" covers its forks).
+    private static func names(for browser: CookieBrowser) -> [String] {
+        browser == .firefox ? firefoxFamily.map(\.name) : [browser.label]
+    }
+
+    static let fullDiskAccessHelp = "Turn on Full Disk Access for Jethriki in System Settings › Privacy & Security, then reopen Jethriki"
+
     private static func subfolders(of path: String) -> [String] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
         return names.map { (path as NSString).appendingPathComponent($0) }
@@ -124,13 +165,22 @@ enum BrowserCookies {
             return Resolution(source: chosen, note: nil)
         }
         let fallback = available(home: home).first
+        let locked = blocked(home: home)
         if selection == .auto {
-            return Resolution(source: fallback,
-                              note: fallback == nil ? "No browser with cookies was found on this Mac, so cookies are off." : nil)
+            if fallback != nil { return Resolution(source: fallback, note: nil) }
+            let note = locked.isEmpty
+                ? "No browser with cookies was found on this Mac, so cookies are off."
+                : "macOS is blocking Jethriki from reading browser data (\(locked.joined(separator: ", "))), so cookies are off. \(fullDiskAccessHelp)."
+            return Resolution(source: nil, note: note)
         }
-        let missing = selection == .safari
-            ? "Safari's cookies can't be read without Full Disk Access"
-            : "\(selection.label) has no cookies on this Mac"
+        let missing: String
+        if selection == .safari {
+            missing = "Safari's cookies can't be read without Full Disk Access"
+        } else if locked.contains(where: names(for: selection).contains) {
+            missing = "macOS is blocking Jethriki from reading \(selection.label)'s data. \(fullDiskAccessHelp)"
+        } else {
+            missing = "\(selection.label) has no cookies on this Mac"
+        }
         if let fallback {
             return Resolution(source: fallback, note: "\(missing) — using \(fallback.name) instead.")
         }

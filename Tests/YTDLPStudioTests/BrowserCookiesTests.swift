@@ -68,6 +68,28 @@ final class BrowserCookiesTests: XCTestCase {
         XCTAssertEqual(BrowserCookies.arguments(for: .safari, home: home), ["--cookies-from-browser", "safari"])
     }
 
+    func testFolderMacOSRefusesToOpenIsReportedAsBlocked() throws {
+        try XCTSkipIf(getuid() == 0, "root can read any folder")
+        try touch("Library/Application Support/Firefox/Profiles/abc.default-release/cookies.sqlite")
+        try touch("Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies")
+        let profiles = (home as NSString).appendingPathComponent("Library/Application Support/Firefox/Profiles")
+        XCTAssertEqual(BrowserCookies.blocked(home: home), [])
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: profiles)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: profiles) }
+
+        XCTAssertEqual(BrowserCookies.blocked(home: home), ["Firefox"])
+        let firefox = BrowserCookies.resolve(.firefox, home: home)
+        XCTAssertEqual(firefox.source?.browser, .brave)
+        XCTAssertTrue(firefox.note?.contains("Full Disk Access") == true, firefox.note ?? "")
+        XCTAssertNil(BrowserCookies.resolve(.brave, home: home).note)
+
+        // With nothing else readable, Automatic says why instead of "no browser found".
+        try FileManager.default.removeItem(atPath: (home as NSString).appendingPathComponent("Library/Application Support/BraveSoftware"))
+        let auto = BrowserCookies.resolve(.auto, home: home)
+        XCTAssertNil(auto.source)
+        XCTAssertTrue(auto.note?.contains("blocking Jethriki from reading browser data (Firefox)") == true, auto.note ?? "")
+    }
+
     func testCommandUsesResolvedBrowser() {
         var options = DownloadOptions()
         options.cookieBrowser = .none

@@ -447,6 +447,7 @@ struct NetworkOptionsView: View {
     @Binding var o: DownloadOptions
     @State private var cookieSources: [BrowserCookies.Source] = []
     @State private var safariLocked = false
+    @State private var blockedBrowsers: [String] = []
 
     /// Browsers that have cookies here, plus the saved choice even when it has none.
     private var cookieChoices: [(browser: CookieBrowser, title: String)] {
@@ -472,6 +473,7 @@ struct NetworkOptionsView: View {
     private func refreshCookieSources() {
         cookieSources = BrowserCookies.available()
         safariLocked = BrowserCookies.safariNeedsFullDiskAccess()
+        blockedBrowsers = BrowserCookies.blocked()
     }
 
     var body: some View {
@@ -499,8 +501,16 @@ struct NetworkOptionsView: View {
                     Hint(status.text, systemImage: status.warning ? "exclamationmark.triangle" : "checkmark.circle",
                          tint: status.warning ? .orange : .green)
                 }
-                if safariLocked {
-                    Hint("Safari isn't listed because its cookies need Full Disk Access: System Settings › Privacy & Security › Full Disk Access, switch on Jethriki, then reopen the app.")
+                if !blockedBrowsers.isEmpty || safariLocked {
+                    Hint(blockedBrowsers.isEmpty
+                         ? "Safari isn't listed because its cookies need Full Disk Access. Switch on Jethriki there, then reopen the app."
+                         : "macOS won't let Jethriki read \(blockedBrowsers.joined(separator: ", ")) without Full Disk Access. Switch on Jethriki there, then reopen the app. A new build of Jethriki may need it switched off and on again.",
+                         systemImage: "lock", tint: blockedBrowsers.isEmpty ? .secondary : .orange)
+                    Button("Open Full Disk Access Settings…") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
                 }
                 TextField("Proxy", text: $o.proxy, prompt: Text("e.g. socks5://127.0.0.1:1080"))
                     .font(.system(.body, design: .monospaced))
