@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.9.0/Jethriki-2.9.0-macOS.zip"><b>Download for macOS</b></a>
+  <a href="https://github.com/dustalexw/jethriki/releases/download/v2.9.1/Jethriki-2.9.1-macOS.zip"><b>Download for macOS</b></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/dustalexw/jethriki/releases/download/v2.9.0/Jethriki-2.9.0-Windows-x64.zip"><b>Download for Windows</b></a>
   &nbsp;·&nbsp;
@@ -29,9 +29,9 @@ icon sizes and `Windows/App/AppIcon.ico` the Windows ones.
 Jethriki was previously called Sipass and YT-DLP Studio; settings and presets from earlier
 versions carry over.
 
-The latest release is **Jethriki 2.9.0** for macOS, Windows and Linux.
+The latest release is **Jethriki 2.9.1** for macOS and **Jethriki 2.9.0** for Windows and Linux.
 
-On macOS, unzip **Jethriki-2.9.0-macOS.zip** and move **Jethriki.app** to Applications.
+On macOS, unzip **Jethriki-2.9.1-macOS.zip** and move **Jethriki.app** to Applications.
 
 The interface takes its look from the icon on all three platforms: a deep-space
 backdrop, frosted panels with an iridescent edge, a compact link field and a glowing
