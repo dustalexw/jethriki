@@ -1,0 +1,3 @@
+#!/bin/sh
+# Placeholder: on iOS, ffprobe runs inside the Jethriki app (see App/Engine/InAppProcess.swift).
+exit 127

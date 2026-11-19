@@ -140,7 +140,10 @@ enum BrowserCookies {
     /// The yt-dlp arguments for a setting; empty when no cookies will be used.
     static func arguments(for selection: CookieBrowser, home: String = defaultHome) -> [String] {
         if selection == .none { return [] }
-        #if os(macOS)
+        #if os(iOS)
+        // iPhone and iPad have no desktop browsers to read; the app's own sign-in (`--cookies`) is used instead.
+        return []
+        #elseif os(macOS)
         guard let source = resolve(selection, home: home).source else { return [] }
         return ["--cookies-from-browser", source.argument]
         #else

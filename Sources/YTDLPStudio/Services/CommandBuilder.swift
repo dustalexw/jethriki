@@ -142,6 +142,7 @@ enum CommandBuilder {
         if o.retries != 10 { a += ["-R", "\(o.retries)"] }
         if !o.proxy.trimmed.isEmpty { a += ["--proxy", o.proxy.trimmed] }
         a += BrowserCookies.arguments(for: o.cookieBrowser)
+        if !o.cookiesFile.trimmed.isEmpty, FileManager.default.fileExists(atPath: o.cookiesFile) { a += ["--cookies", o.cookiesFile] }
         if o.sleepInterval > 0 { a += ["--sleep-interval", "\(o.sleepInterval)"] }
 
         // Output

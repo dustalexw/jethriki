@@ -33,6 +33,9 @@ struct LineBuffer {
     }
 }
 
+#if !os(iOS)
+// On iOS, apps can't start processes: iOS/App/Engine/InAppProcess.swift runs the tools inside the app instead.
+
 /// Runs a long-lived process and delivers each output line on the main queue.
 final class ProcessRunner {
     private let process = Process()
@@ -176,12 +179,15 @@ final class ProcessRunner {
     }
 }
 
+#endif
+
 struct ProcessResult {
     let status: Int32
     let stdout: String
     let stderr: String
 }
 
+#if !os(iOS)
 private final class DataBox {
     var data = Data()
 }
@@ -221,3 +227,4 @@ enum Shell {
         }
     }
 }
+#endif
